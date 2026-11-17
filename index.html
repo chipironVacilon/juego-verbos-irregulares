@@ -1,0 +1,1780 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verbos Irregulares · Juego de inglés para 6º de Primaria</title>
+<meta name="description" content="Juego para aprender los verbos irregulares en inglés: escucha la pronunciación, completa frases y su traducción al español.">
+<meta name="color-scheme" content="dark">
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: rgba(255, 255, 255, 0.055);
+    --card-strong: rgba(255, 255, 255, 0.09);
+    --line: rgba(255, 255, 255, 0.12);
+    --ink: #eef2ff;
+    --muted: #9aa8c7;
+    --gold: #ffd166;
+    --ok: #4ade80;
+    --bad: #fb7185;
+    --study: #4ade80;
+    --quiz: #8b7cff;
+    --gaps: #22d3ee;
+    --listen: #ffb347;
+    --radius: 20px;
+    --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background:
+      radial-gradient(1100px 620px at 12% -12%, #2a1a5e 0%, transparent 62%),
+      radial-gradient(900px 520px at 92% -6%, #0b3b53 0%, transparent 60%),
+      radial-gradient(700px 500px at 50% 110%, #1b1240 0%, transparent 65%),
+      var(--bg);
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.45;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  button { font: inherit; color: inherit; }
+
+  :focus-visible {
+    outline: 3px solid var(--gold);
+    outline-offset: 3px;
+    border-radius: 14px;
+  }
+
+  .app {
+    width: min(100%, 760px);
+    margin: 0 auto;
+    padding: 14px 16px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  /* ---------- top bar ---------- */
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+
+  .brand:hover { background: var(--card-strong); transform: translateY(-1px); }
+  .brand__logo { font-size: 1.1rem; }
+
+  .stats { display: flex; gap: 8px; }
+
+  .stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat b { font-weight: 800; }
+
+  /* ---------- shared bits ---------- */
+
+  .view { outline: none; }
+
+  h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.15; margin: 0; }
+
+  .eyebrow {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 54px;
+    padding: 12px 22px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    font-weight: 800;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn:hover { background: var(--card-strong); transform: translateY(-1px); }
+  .btn:active { transform: translateY(1px); }
+
+  .btn--primary {
+    background: linear-gradient(180deg, #a78bfa, #7c5cff);
+    border-color: transparent;
+    color: #0b1020;
+  }
+
+  .btn--primary:hover { background: linear-gradient(180deg, #b6a1ff, #8b6dff); }
+
+  .btn--ghost { background: transparent; }
+
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+  .speak {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--card);
+    font-size: 1.05rem;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .speak:hover { background: var(--card-strong); transform: scale(1.06); }
+  .speak:active { transform: scale(0.96); }
+  .speak--big { width: 78px; height: 78px; font-size: 2rem; border-width: 2px; }
+  .speak--listening { animation: pulse 1s ease-in-out infinite; }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 179, 71, 0.5); }
+    50% { transform: scale(1.05); box-shadow: 0 0 0 14px rgba(255, 179, 71, 0); }
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: var(--card-strong);
+    border: 1px solid var(--line);
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .hint {
+    margin: 10px 0 0;
+    font-size: 0.86rem;
+    color: var(--muted);
+  }
+
+  .banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 209, 102, 0.35);
+    background: rgba(255, 209, 102, 0.1);
+    font-size: 0.88rem;
+    color: #ffe9b3;
+  }
+
+  /* ---------- home ---------- */
+
+  .hero { margin: 6px 0 20px; }
+
+  .hero h1 {
+    font-size: clamp(2rem, 8vw, 2.9rem);
+    font-weight: 900;
+  }
+
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(120deg, #a78bfa, #22d3ee 70%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .hero p.lead {
+    margin: 10px 0 0;
+    color: var(--muted);
+    max-width: 46ch;
+  }
+
+  .modes {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .mode {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 16px 18px;
+    text-align: left;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent, var(--quiz));
+    border-radius: 18px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  .mode:hover { transform: translateY(-2px); background: var(--card-strong); }
+  .mode:active { transform: translateY(0); }
+
+  .mode__icon {
+    display: grid;
+    place-items: center;
+    width: 50px;
+    height: 50px;
+    flex: 0 0 auto;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--accent, var(--quiz)) 22%, transparent);
+    font-size: 1.5rem;
+  }
+
+  .mode__body { display: grid; gap: 3px; flex: 1 1 auto; }
+  .mode__body b { font-size: 1.06rem; }
+  .mode__body small { color: var(--muted); font-size: 0.86rem; line-height: 1.35; }
+  .mode__go { color: var(--muted); font-weight: 800; }
+
+  .mode--study { --accent: var(--study); }
+  .mode--quiz { --accent: var(--quiz); }
+  .mode--gaps { --accent: var(--gaps); }
+  .mode--listen { --accent: var(--listen); }
+
+  .progress-card { padding: 16px 18px; }
+
+  .progress-card h2 {
+    font-size: 0.78rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .bar {
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #4ade80, #22d3ee);
+    transition: width 0.4s ease;
+  }
+
+  .progress-card p {
+    margin: 10px 0 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  /* ---------- study ---------- */
+
+  .screen-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .screen-head h1 { font-size: clamp(1.4rem, 5vw, 1.8rem); flex: 1 1 auto; }
+
+  .verb-card { padding: 18px; margin-bottom: 14px; }
+
+  .verb-card__top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .verb-card__meaning { color: var(--muted); font-size: 0.95rem; }
+
+  .forms { display: grid; gap: 8px; margin-bottom: 16px; }
+
+  .form-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+  }
+
+  .form-row--base { border-color: rgba(74, 222, 128, 0.4); background: rgba(74, 222, 128, 0.09); }
+
+  .form-row__label {
+    width: 92px;
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .form-row__value {
+    flex: 1 1 auto;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .form-row--base .form-row__value { font-size: 1.55rem; }
+
+  .examples { display: grid; gap: 10px; }
+
+  .example {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--line);
+  }
+
+  .example__en {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 1.02rem;
+    font-weight: 700;
+  }
+
+  .example__en span { flex: 1 1 auto; padding-top: 6px; }
+  .example__es { margin: 4px 0 0 52px; color: var(--muted); font-size: 0.92rem; }
+  .example__tag { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; }
+
+  mark {
+    background: rgba(255, 209, 102, 0.22);
+    color: #ffe9b3;
+    padding: 0 4px;
+    border-radius: 6px;
+  }
+
+  .tip {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(34, 211, 238, 0.1);
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    font-size: 0.88rem;
+    color: #b8f2ff;
+  }
+
+  .study-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+
+  .study-nav .chip { flex: 0 0 auto; }
+
+  .study-nav__spacer { flex: 1 1 auto; }
+
+  .verb-index { padding: 16px; }
+
+  .verb-index h2 {
+    font-size: 0.78rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .search {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--ink);
+    font: inherit;
+    margin-bottom: 12px;
+  }
+
+  .search::placeholder { color: var(--muted); }
+
+  .verb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+  }
+
+  .verb-grid button {
+    padding: 9px 6px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .verb-grid button:hover { background: var(--card-strong); }
+  .verb-grid button[aria-current="true"] { border-color: var(--gold); color: var(--gold); }
+
+  /* ---------- round ---------- */
+
+  .round-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .round-top__spacer { flex: 1 1 auto; }
+
+  .dots { display: flex; gap: 6px; margin-bottom: 18px; }
+
+  .dots i {
+    height: 6px;
+    flex: 1 1 auto;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .dots i.is-done { background: var(--ok); }
+  .dots i.is-miss { background: var(--bad); }
+  .dots i.is-now { background: var(--gold); }
+
+  .prompt { margin-bottom: 16px; }
+  .prompt h2 { font-size: clamp(1.35rem, 5.2vw, 1.85rem); font-weight: 800; }
+  .prompt .hl { color: var(--gold); }
+  .prompt__sub { margin: 8px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+  .translation {
+    margin: 10px 0 0;
+    padding-left: 12px;
+    border-left: 3px solid rgba(255, 255, 255, 0.18);
+    color: #cfd8f2;
+    font-size: 1rem;
+    font-style: italic;
+  }
+
+  .sentence {
+    margin: 14px 0 0;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.6;
+  }
+
+  .sentence .blank {
+    display: inline-block;
+    min-width: 76px;
+    border-bottom: 3px solid var(--gold);
+    text-align: center;
+    color: var(--gold);
+  }
+
+  .listen-box {
+    display: grid;
+    place-items: center;
+    gap: 10px;
+    padding: 26px 18px;
+    border-radius: 18px;
+    background: radial-gradient(400px 200px at 50% 0%, rgba(255, 179, 71, 0.18), transparent 70%), rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    margin-top: 14px;
+  }
+
+  .listen-box p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  .options {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+    margin-top: 18px;
+  }
+
+  @media (min-width: 560px) {
+    .options { grid-template-columns: 1fr 1fr; }
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 62px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    font-size: 1.12rem;
+    font-weight: 800;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  }
+
+  .option:hover:not(:disabled) { transform: translateY(-2px); background: var(--card-strong); border-color: rgba(255, 255, 255, 0.25); }
+  .option:disabled { cursor: default; }
+
+  .option__key {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 0.84rem;
+    color: var(--muted);
+  }
+
+  .option.is-correct {
+    border-color: var(--ok);
+    background: rgba(74, 222, 128, 0.16);
+    color: #d9ffe6;
+  }
+
+  .option.is-correct .option__key { background: var(--ok); color: #052e16; }
+
+  .option.is-wrong {
+    border-color: var(--bad);
+    background: rgba(251, 113, 133, 0.14);
+    animation: shake 0.3s ease;
+  }
+
+  .option.is-dim { opacity: 0.5; }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+
+  .feedback {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--card);
+  }
+
+  .feedback--ok { border-color: rgba(74, 222, 128, 0.45); background: rgba(74, 222, 128, 0.1); }
+  .feedback--bad { border-color: rgba(251, 113, 133, 0.45); background: rgba(251, 113, 133, 0.1); }
+
+  .feedback__head { display: flex; align-items: center; gap: 10px; font-weight: 800; margin-bottom: 6px; }
+
+  .feedback p { margin: 6px 0 0; font-size: 0.95rem; }
+
+  .trio {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .trio > span {
+    display: grid;
+    gap: 2px;
+    padding: 7px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--line);
+  }
+
+  .trio i {
+    font-style: normal;
+    font-size: 0.68rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .trio b { font-size: 1.1rem; }
+  .trio .speak { align-self: center; margin-left: 2px; }
+
+  .feedback__meaning { color: var(--muted); }
+  .feedback__meaning b { color: var(--ink); }
+
+  .feedback .example { margin-top: 10px; }
+
+  .next-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+  /* ---------- result ---------- */
+
+  .result { padding: 26px 20px; text-align: center; }
+
+  .result__emoji { font-size: 3.4rem; line-height: 1; margin-bottom: 8px; }
+  .result h2 { font-size: clamp(1.5rem, 6vw, 2rem); }
+  .result__score { margin: 10px 0 0; font-size: 1.1rem; color: var(--muted); }
+  .result__stars { margin: 14px 0 0; font-size: 1.3rem; font-weight: 800; color: var(--gold); }
+
+  .result__review {
+    margin: 18px 0 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    font-size: 0.92rem;
+    text-align: left;
+  }
+
+  .result__actions { display: grid; gap: 10px; margin-top: 20px; }
+
+  @media (min-width: 560px) {
+    .result__actions { grid-template-columns: 1fr 1fr; }
+    .result__actions .btn--wide { grid-column: 1 / -1; }
+  }
+
+  /* ---------- footnote + confetti ---------- */
+
+  .footnote {
+    margin: 22px 2px 0;
+    font-size: 0.76rem;
+    color: rgba(154, 168, 199, 0.75);
+    text-align: center;
+  }
+
+  .confetti {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  /* Narrow phones: keep the top bar on one line and the feedback compact. */
+  @media (max-width: 470px) {
+    .brand { padding: 8px 12px; }
+    .brand__text { display: none; }
+    .brand__logo { font-size: 1.25rem; }
+    .stat { padding: 7px 10px; font-size: 0.9rem; }
+  }
+
+  @media (max-width: 540px) {
+    .round-top .chip--mode { display: none; }
+    .trio > span { padding: 6px 10px; }
+    .trio b { font-size: 1rem; }
+    .example__es { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="brand" data-action="home" aria-label="Volver al inicio">
+      <span class="brand__logo" aria-hidden="true">🔤</span>
+      <span class="brand__text">Verbos Irregulares</span>
+    </button>
+    <div class="stats">
+      <span class="stat" title="Estrellas conseguidas">⭐ <b id="stat-stars">0</b></span>
+      <span class="stat" title="Mejor racha de aciertos">🔥 <b id="stat-streak">0</b></span>
+    </div>
+  </header>
+
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <p class="footnote">
+    La pronunciación usa grabaciones en inglés incluidas con el juego (sin internet).
+    Si no están disponibles, se usa la voz en inglés del navegador.
+  </p>
+</div>
+
+<canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+
+<script src="verbs.js"></script>
+<script>
+"use strict";
+
+/* =========================================================================
+   Helpers
+   ========================================================================= */
+
+const esc = (value) =>
+  String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const rand = (max) => Math.floor(Math.random() * max);
+
+function shuffle(list) {
+  const copy = list.slice();
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = rand(i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+const formsOf = (value) => String(value).split("/").map((part) => part.trim()).filter(Boolean);
+const firstForm = (value) => formsOf(value)[0];
+
+/** Text a speech engine should say for a written form. */
+function sayForm(verb, form) {
+  if (form === "base") return verb.base;
+  if (form === "past") return verb.speakPast || firstForm(verb.past);
+  return verb.speakParticiple || firstForm(verb.participle);
+}
+
+/* =========================================================================
+   Progress (localStorage, best effort)
+   ========================================================================= */
+
+const STORAGE_KEY = "verbos-irregulares-v1";
+const EMPTY_PROFILE = { stars: 0, bestStreak: 0, rounds: 0, verbs: {} };
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...EMPTY_PROFILE };
+    const parsed = JSON.parse(raw);
+    return {
+      stars: Number(parsed.stars) || 0,
+      bestStreak: Number(parsed.bestStreak) || 0,
+      rounds: Number(parsed.rounds) || 0,
+      verbs: parsed.verbs && typeof parsed.verbs === "object" ? parsed.verbs : {}
+    };
+  } catch (error) {
+    return { ...EMPTY_PROFILE };
+  }
+}
+
+function saveProfile() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+  } catch (error) {
+    /* private mode or a blocked storage: the game still works in memory */
+  }
+}
+
+let profile = loadProfile();
+
+function statsFor(verb) {
+  return profile.verbs[verb.base] || { seen: 0, right: 0, wrong: 0 };
+}
+
+function recordAnswer(verb, isRight) {
+  const stats = statsFor(verb);
+  profile.verbs[verb.base] = {
+    seen: stats.seen + 1,
+    right: stats.right + (isRight ? 1 : 0),
+    wrong: stats.wrong + (isRight ? 0 : 1)
+  };
+  saveProfile();
+}
+
+const practicedCount = () => Object.values(profile.verbs).filter((stats) => stats.seen > 0).length;
+
+/** Verbs answered wrongly come back more often; easy ones fade out a bit. */
+function weightOf(verb) {
+  const stats = statsFor(verb);
+  return Math.max(0.4, 1 + stats.wrong * 2 - Math.min(stats.right, 4) * 0.25);
+}
+
+function weightedSample(items, count, weightOfItem) {
+  const pool = items.map((item) => ({ item, weight: weightOfItem(item) }));
+  const picked = [];
+  while (picked.length < count && pool.length > 0) {
+    const total = pool.reduce((sum, entry) => sum + entry.weight, 0);
+    let ticket = Math.random() * total;
+    let index = pool.length - 1;
+    for (let i = 0; i < pool.length; i += 1) {
+      ticket -= pool[i].weight;
+      if (ticket <= 0) { index = i; break; }
+    }
+    picked.push(pool[index].item);
+    pool.splice(index, 1);
+  }
+  return picked;
+}
+
+/* =========================================================================
+   Speech (browser voices, no audio files)
+   ========================================================================= */
+
+const Speech = (() => {
+  const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+  const supported = Boolean(synth) && typeof window.SpeechSynthesisUtterance === "function";
+  let voice = null;
+  let voiceMissing = false;
+  let listener = () => {};
+
+  const PREFERRED = ["Google UK English Female", "Microsoft Sonia", "Microsoft Libby", "Sonia", "Libby", "Hazel", "Samantha", "Karen", "Daniel"];
+
+  function pickVoice() {
+    if (!supported) return null;
+    const voices = synth.getVoices() || [];
+    const english = voices.filter((candidate) => /^en(-|_|$)/i.test(candidate.lang || ""));
+    if (english.length === 0) return null;
+
+    for (const name of PREFERRED) {
+      const match = english.find((candidate) => candidate.name.toLowerCase().includes(name.toLowerCase()));
+      if (match) return match;
+    }
+    return english.find((candidate) => /^en-GB/i.test(candidate.lang)) || english[0];
+  }
+
+  function refresh() {
+    voice = pickVoice();
+    voiceMissing = !voice;
+    listener(voiceMissing);
+  }
+
+  if (supported) {
+    refresh();
+    synth.addEventListener?.("voiceschanged", refresh);
+  }
+
+  return {
+    supported,
+    onChange(callback) {
+      listener = callback;
+      callback(voiceMissing);
+    },
+    get missing() { return voiceMissing; },
+    get voiceName() { return voice ? voice.name : ""; },
+    say(text, options = {}) {
+      if (!supported || !text) return false;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = voice ? voice.lang : "en-GB";
+      utterance.rate = options.rate || 0.85;
+      utterance.pitch = 1;
+      if (voice) utterance.voice = voice;
+      try {
+        synth.cancel();
+        synth.speak(utterance);
+      } catch (error) {
+        return false;
+      }
+      return true;
+    },
+    stop() {
+      if (supported) synth.cancel();
+    }
+  };
+})();
+
+/* =========================================================================
+   Audio playback: recorded clips first, browser voice as fallback
+   ========================================================================= */
+
+const CLIP_ROOT = "assets/audio/";
+const clipOf = (verb, form) => `${CLIP_ROOT}${verb.base}/${form}.mp3`;
+const exampleClip = (verb, example) =>
+  `${CLIP_ROOT}${verb.base}/example-${verb.examples.indexOf(example) + 1}.mp3`;
+
+/** A button that plays recorded clips, falling back to the browser voice. */
+function speakerButton(text, label, extraClass, clips) {
+  const audio = Array.isArray(clips) ? clips : clips ? [clips] : [];
+  return `<button class="speak ${extraClass || ""}" data-action="speak" data-say="${esc(text)}" data-clips='${esc(JSON.stringify(audio))}' aria-label="Escuchar ${esc(label)}">🔊</button>`;
+}
+
+const Player = (() => {
+  let queue = [];
+  let current = null;
+  let spokenText = "";
+  let fileMode = null; // null: unknown yet · true: clips play · false: use the synth voice
+  let probeDone = false;
+
+  /** Media errors that mean a clip is really broken (not a mere abort). */
+  const realErrorCode = (audio) => {
+    const code = audio.error && audio.error.code;
+    return code === 2 || code === 3 || code === 4 ? code : null;
+  };
+
+  function detach(audio) {
+    audio.onended = null;
+    audio.onerror = null;
+  }
+
+  function stop() {
+    queue = [];
+    if (current) {
+      const audio = current;
+      current = null;
+      detach(audio);
+      audio.pause();
+      // Clearing the source aborts the media element; without handlers attached
+      // the ensuing (harmless) error/emptied events are ignored.
+      audio.removeAttribute("src");
+      audio.load();
+    }
+  }
+
+  function next() {
+    const clip = queue.shift();
+    if (clip === undefined) return;
+    const audio = current || new Audio();
+    detach(audio);
+    current = audio;
+    audio.src = clip;
+    audio.onended = () => {
+      detach(audio);
+      next();
+    };
+    audio.onerror = () => {
+      if (audio.src && realErrorCode(audio)) {
+        // The clip itself is broken or missing: the synth voice takes over for good.
+        fileMode = false;
+        probeDone = true;
+        stop();
+        Speech.say(spokenText);
+      } else {
+        // Aborted load (usually cleared mid-flight): not evidence about the clips.
+        stop();
+      }
+    };
+    audio.play().catch(() => {
+      /* Autoplay policies reject playback without a user gesture; the next
+         click will play normally. The synth would be blocked too. */
+    });
+  }
+
+  return {
+    get fileMode() {
+      return fileMode;
+    },
+    /** clips: file paths · text: what the browser voice should say instead. */
+    say(clips, text) {
+      stop();
+      spokenText = text;
+      if (clips.length > 0 && fileMode !== false) {
+        // Recorded audio is the default; if the probe has not answered yet we
+        // still try optimistically: one broken clip downgrades on its own error.
+        queue = clips.slice();
+        next();
+        return;
+      }
+      fileMode = false;
+      Speech.say(text);
+    },
+    stop,
+    /** Boot probe: do we have recorded audio in this environment? */
+    probe(url) {
+      return new Promise((done) => {
+        const audio = new Audio();
+        audio.preload = "auto";
+        audio.style.display = "none";
+        let settled = false;
+        const verdict = (ok) => {
+          if (settled) return;
+          settled = true;
+          probeDone = true;
+          fileMode = ok;
+          audio.removeAttribute("src");
+          audio.load();
+          done(ok);
+        };
+        audio.addEventListener("loadedmetadata", () => verdict(true), { once: true });
+        audio.addEventListener("canplaythrough", () => verdict(true), { once: true });
+        audio.addEventListener("error", () => {
+          // Only a real load/decode failure decides; aborts are retried once.
+          if (realErrorCode(audio)) {
+            verdict(false);
+          } else {
+            audio.src = url;
+          }
+        }, { once: true });
+        setTimeout(() => verdict(false), 6000);
+        audio.src = url;
+        (document.body || document.documentElement).appendChild(audio);
+      });
+    }
+  };
+})();
+
+/* =========================================================================
+   Tiny sound effects (WebAudio, no files)
+   ========================================================================= */
+
+const Sfx = (() => {
+  let context = null;
+
+  function audio() {
+    if (context) return context;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    try { context = new Ctx(); } catch (error) { return null; }
+    return context;
+  }
+
+  function tone(frequency, start, duration, type, gainValue) {
+    const ctx = audio();
+    if (!ctx) return;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime + start);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+    gain.gain.exponentialRampToValueAtTime(gainValue, ctx.currentTime + start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + duration);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start(ctx.currentTime + start);
+    oscillator.stop(ctx.currentTime + start + duration + 0.03);
+  }
+
+  return {
+    right() { tone(784, 0, 0.12, "sine", 0.12); tone(1175, 0.09, 0.16, "sine", 0.1); },
+    wrong() { tone(196, 0, 0.18, "triangle", 0.1); tone(147, 0.1, 0.22, "triangle", 0.08); },
+    finish() { [523, 659, 784, 1047].forEach((note, i) => tone(note, i * 0.11, 0.22, "sine", 0.09)); }
+  };
+})();
+
+/* =========================================================================
+   Confetti
+   ========================================================================= */
+
+let confettiFrame = 0;
+
+function stopConfetti() {
+  const canvas = document.getElementById("confetti");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  cancelAnimationFrame(confettiFrame);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function confetti() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const canvas = document.getElementById("confetti");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const colors = ["#ffd166", "#8b7cff", "#22d3ee", "#4ade80", "#fb7185"];
+  const pieces = Array.from({ length: 90 }, () => ({
+    x: window.innerWidth / 2 + (Math.random() - 0.5) * 220,
+    y: window.innerHeight * 0.35,
+    vx: (Math.random() - 0.5) * 12,
+    vy: -6 - Math.random() * 9,
+    size: 5 + Math.random() * 7,
+    spin: (Math.random() - 0.5) * 0.35,
+    angle: Math.random() * Math.PI,
+    color: colors[rand(colors.length)]
+  }));
+
+  let frame = 0;
+  function tick() {
+    frame += 1;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const piece of pieces) {
+      piece.vy += 0.28;
+      piece.x += piece.vx;
+      piece.y += piece.vy;
+      piece.angle += piece.spin;
+      ctx.save();
+      ctx.translate(piece.x, piece.y);
+      ctx.rotate(piece.angle);
+      ctx.fillStyle = piece.color;
+      ctx.fillRect(-piece.size / 2, -piece.size / 2, piece.size, piece.size * 0.6);
+      ctx.restore();
+    }
+    if (frame < 130) confettiFrame = requestAnimationFrame(tick);
+    else ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  }
+  confettiFrame = requestAnimationFrame(tick);
+}
+
+/* =========================================================================
+   Round building
+   ========================================================================= */
+
+const ROUND_SIZE = 10;
+const MODES = {
+  study: { name: "Tarjetas", icon: "🃏", accent: "var(--study)" },
+  quiz: { name: "Quiz", icon: "⚡", accent: "var(--quiz)" },
+  gaps: { name: "Frases", icon: "✏️", accent: "var(--gaps)" },
+  listen: { name: "Escucha", icon: "🎧", accent: "var(--listen)" }
+};
+
+/** All single-word variants of a form, used as plausible wrong answers. */
+function distractorPool(verbs, form) {
+  const words = new Set();
+  for (const verb of verbs) {
+    for (const word of formsOf(verb[form])) {
+      if (!word.includes(" ")) words.add(word);
+    }
+  }
+  return [...words];
+}
+
+const PAST_POOL = distractorPool(VERBS, "past");
+const PARTICIPLE_POOL = distractorPool(VERBS, "participle");
+
+function optionsFor(correct, pool) {
+  const wrong = shuffle(pool.filter((word) => word.toLowerCase() !== correct.toLowerCase())).slice(0, 3);
+  return shuffle([correct, ...wrong]);
+}
+
+function blankSentence(sentence, target) {
+  const safe = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return sentence.replace(new RegExp(`\\b${safe}\\b`, "i"), "____");
+}
+
+function pairExample(verb, form) {
+  return verb.examples.find((example) => example.form === form) || verb.examples[0];
+}
+
+function buildQuestion(mode, verb) {
+  const past = pairExample(verb, "past");
+  const participle = pairExample(verb, "participle");
+
+  if (mode === "quiz") {
+    const form = verb.participle !== verb.past && Math.random() < 0.5 ? "participle" : "past";
+    const correct = form === "past" ? verb.past : verb.participle;
+    return {
+      verb,
+      form,
+      prompt: `¿Cuál es el <b class="hl">${form === "past" ? "pasado" : "participio"}</b> de <b class="hl">${esc(verb.base)}</b>?`,
+      sub: `«${esc(verb.base)}» significa “${esc(verb.es)}”`,
+      options: optionsFor(correct, form === "past" ? PAST_POOL : PARTICIPLE_POOL),
+      correct,
+      answerKind: "form",
+      speak: sayForm(verb, "base"),
+      example: form === "past" ? past : participle
+    };
+  }
+
+  if (mode === "gaps") {
+    const example = Math.random() < 0.5 ? past : participle;
+    const correct = example.target;
+    const pool = example.form === "past" ? PAST_POOL : PARTICIPLE_POOL;
+    return {
+      verb,
+      form: example.form,
+      prompt: "Completa la frase",
+      sub: example.form === "past" ? "Usa el pasado simple" : "Usa el participio (con have / has)",
+      sentence: blankSentence(example.en, correct),
+      options: optionsFor(correct, pool),
+      correct,
+      answerKind: "gap",
+      speak: example.en,
+      example
+    };
+  }
+
+  // listen: hear a form, then choose the verb
+  const form = verb.participle !== verb.past && Math.random() < 0.4 ? "participle" : "past";
+  const spokenLabel = sayForm(verb, form);
+  const verbOptions = shuffle(
+    [verb, ...shuffle(VERBS.filter((candidate) => candidate.base !== verb.base)).slice(0, 3)]
+  ).map((candidate) => candidate.base);
+  return {
+    verb,
+    form,
+    prompt: "¿Qué verbo has oído?",
+    sub: "Pulsa el altavoz para escucharlo otra vez",
+    options: verbOptions,
+    correct: verb.base,
+    answerKind: "verb",
+    speak: spokenLabel,
+    heard: spokenLabel,
+    example: form === "past" ? past : participle
+  };
+}
+
+function startRound(mode) {
+  stopConfetti();
+  const verbs = weightedSample(VERBS, ROUND_SIZE, weightOf);
+  state.round = {
+    mode,
+    items: verbs.map((verb) => buildQuestion(mode, verb)),
+    index: 0,
+    score: 0,
+    streak: 0,
+    bestStreak: 0,
+    starsEarned: 0,
+    misses: [],
+    answered: null
+  };
+  state.view = "play";
+  render();
+  speakCurrentIfNeeded();
+}
+
+/* =========================================================================
+   State + routing
+   ========================================================================= */
+
+const state = {
+  view: "home",
+  round: null,
+  study: { index: 0, filter: "" },
+  lastRound: null
+};
+
+const view = document.getElementById("view");
+
+function go(target) {
+  stopConfetti();
+  if (target === "home") {
+    state.round = null;
+    state.view = "home";
+  } else if (target === "study") {
+    state.view = "study";
+  } else if (MODES[target]) {
+    startRound(target);
+    if (location.hash.slice(1) !== target) location.hash = `#${target}`;
+    return;
+  }
+  if (location.hash.slice(1) !== target) location.hash = `#${target === "home" ? "" : target}`;
+  render();
+}
+
+window.addEventListener("hashchange", () => {
+  const target = location.hash.slice(1) || "home";
+  if (target === "study" && state.view === "study") return;
+  if (MODES[target] && state.round && state.round.mode === target) return;
+  go(target);
+});
+
+/* =========================================================================
+   Views
+   ========================================================================= */
+
+function exampleBlock(example, verb, options = {}) {
+  const en = options.highlight
+    ? example.en.replace(
+        new RegExp(`\\b${example.target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"),
+        (match) => `<mark>${match}</mark>`
+      )
+    : example.en;
+  const tag = example.form === "past" ? "Pasado simple" : "Presente perfecto";
+  return `
+    <div class="example">
+      <div class="example__en">
+        ${speakerButton(example.en, "la frase", "", exampleClip(verb, example))}
+        <span>${en}</span>
+      </div>
+      <p class="example__es">${esc(example.es)}</p>
+      <p class="example__tag">${tag}</p>
+    </div>`;
+}
+
+function renderHome() {
+  const practiced = practicedCount();
+  const percent = Math.round((practiced / VERBS.length) * 100);
+  const noClips = state.audioMissing === true;
+  const noSynth = !Speech.supported || Speech.missing;
+
+  view.innerHTML = `
+    <section class="hero">
+      <p class="eyebrow">Inglés · 6º de Primaria</p>
+      <h1>Verbos <em>irregulares</em></h1>
+      <p class="lead">Escucha cómo se pronuncian, elige la forma correcta y completa frases.
+        ${VERBS.length} verbos con ejemplos y su traducción al español.</p>
+    </section>
+
+    ${!noClips && !noSynth ? "" : noClips && noSynth ? `
+      <div class="banner" role="status">
+        <span aria-hidden="true">⚠️</span>
+        <span>No encontramos el audio grabado ni una voz en inglés en este equipo:
+          el juego funciona, pero sin sonido. Copia la carpeta <b>assets</b> junto a
+          <b>index.html</b> o añade una voz en inglés al sistema.</span>
+      </div>` : noClips ? `
+      <div class="banner" role="status">
+        <span aria-hidden="true">🔉</span>
+        <span>No encontramos el audio grabado (¿la carpeta <b>assets</b> está junto a
+          <b>index.html</b>?). Usaremos la voz en inglés del navegador, de menor calidad.</span>
+      </div>` : ""}
+
+    <div class="modes">
+      <button class="mode mode--study" data-action="study">
+        <span class="mode__icon" aria-hidden="true">🃏</span>
+        <span class="mode__body">
+          <b>Tarjetas para estudiar</b>
+          <small>Las tres formas, cómo se dicen y dos frases de ejemplo con su traducción.</small>
+        </span>
+        <span class="mode__go" aria-hidden="true">→</span>
+      </button>
+
+      <button class="mode mode--quiz" data-action="play" data-mode="quiz">
+        <span class="mode__icon" aria-hidden="true">⚡</span>
+        <span class="mode__body">
+          <b>Quiz de formas</b>
+          <small>¿Cuál es el pasado o el participio? Elige entre cuatro opciones.</small>
+        </span>
+        <span class="mode__go" aria-hidden="true">→</span>
+      </button>
+
+      <button class="mode mode--gaps" data-action="play" data-mode="gaps">
+        <span class="mode__icon" aria-hidden="true">✏️</span>
+        <span class="mode__body">
+          <b>Completa la frase</b>
+          <small>Una frase con un hueco y su traducción: elige la forma que falta.</small>
+        </span>
+        <span class="mode__go" aria-hidden="true">→</span>
+      </button>
+
+      <button class="mode mode--listen" data-action="play" data-mode="listen">
+        <span class="mode__icon" aria-hidden="true">🎧</span>
+        <span class="mode__body">
+          <b>Escucha y adivina</b>
+          <small>Oirás el verbo en inglés. ¿Cuál de estos cuatro es?</small>
+        </span>
+        <span class="mode__go" aria-hidden="true">→</span>
+      </button>
+    </div>
+
+    <section class="progress-card card">
+      <h2>Tu progreso</h2>
+      <div class="bar"><span style="width:${percent}%"></span></div>
+      <p>${practiced} de ${VERBS.length} verbos practicados · ${profile.rounds} rondas jugadas · mejor racha: ${profile.bestStreak}</p>
+    </section>`;
+}
+
+function renderStudy() {
+  const verb = VERBS[state.study.index] || VERBS[0];
+  const filter = state.study.filter.trim().toLowerCase();
+  const listed = VERBS.filter(
+    (candidate) =>
+      !filter ||
+      candidate.base.toLowerCase().includes(filter) ||
+      candidate.es.toLowerCase().includes(filter)
+  );
+  const pastExample = pairExample(verb, "past");
+  const participleExample = pairExample(verb, "participle");
+
+  view.innerHTML = `
+    <div class="screen-head">
+      <button class="btn btn--ghost" data-action="home" aria-label="Volver al inicio">← Inicio</button>
+      <h1>Tarjetas</h1>
+    </div>
+
+    <article class="verb-card card">
+      <div class="verb-card__top">
+        <span class="chip">Verbo ${state.study.index + 1} de ${VERBS.length}</span>
+        <span class="verb-card__meaning">${esc(verb.es)}</span>
+      </div>
+
+      <div class="forms">
+        <div class="form-row form-row--base">
+          <span class="form-row__label">Infinitivo</span>
+          <span class="form-row__value" lang="en">${esc(verb.base)}</span>
+          ${speakerButton(sayForm(verb, "base"), verb.base, "", clipOf(verb, "base"))}
+        </div>
+        <div class="form-row">
+          <span class="form-row__label">Pasado</span>
+          <span class="form-row__value" lang="en">${esc(verb.past)}</span>
+          ${speakerButton(sayForm(verb, "past"), verb.past, "", clipOf(verb, "past"))}
+        </div>
+        <div class="form-row">
+          <span class="form-row__label">Participio</span>
+          <span class="form-row__value" lang="en">${esc(verb.participle)}</span>
+          ${speakerButton(sayForm(verb, "participle"), verb.participle, "", clipOf(verb, "participle"))}
+        </div>
+      </div>
+
+      <div class="examples">
+        ${exampleBlock(pastExample, verb, { highlight: true })}
+        ${exampleBlock(participleExample, verb, { highlight: true })}
+      </div>
+
+      ${verb.tip ? `<p class="tip">💡 ${esc(verb.tip)}</p>` : ""}
+    </article>
+
+    <div class="study-nav">
+      <button class="btn" data-action="study-prev" ${state.study.index === 0 ? "disabled" : ""}>← Anterior</button>
+      <span class="study-nav__spacer"></span>
+      <button class="btn btn--primary" data-action="study-next" ${state.study.index === VERBS.length - 1 ? "disabled" : ""}>Siguiente →</button>
+    </div>
+
+    <section class="verb-index card">
+      <h2>Todos los verbos</h2>
+      <input class="search" type="search" placeholder="Buscar en inglés o en español…" value="${esc(state.study.filter)}" data-role="study-filter" aria-label="Buscar verbo">
+      <div class="verb-grid">
+        ${listed
+          .map(
+            (candidate) => `
+          <button data-action="study-jump" data-index="${VERBS.indexOf(candidate)}"
+            aria-current="${candidate.base === verb.base ? "true" : "false"}">
+            ${esc(candidate.base)}
+          </button>`
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function renderRound() {
+  const round = state.round;
+  if (!round) { state.view = "home"; renderHome(); return; }
+
+  if (round.index >= round.items.length) { renderResult(); return; }
+
+  const item = round.items[round.index];
+  const answered = round.answered;
+  const isRight = answered && answered.index === item.options.indexOf(item.correct);
+
+  const dots = round.items
+    .map((candidate, i) => {
+      if (i === round.index) return `<i class="is-now"></i>`;
+      const outcome = round.answers?.[i];
+      if (outcome === undefined) return `<i></i>`;
+      return `<i class="${outcome ? "is-done" : "is-miss"}"></i>`;
+    })
+    .join("");
+
+  const options = item.options
+    .map((option, i) => {
+      let classes = "option";
+      if (answered) {
+        if (option === item.correct) classes += " is-correct";
+        else if (i === answered.index) classes += " is-wrong";
+        else classes += " is-dim";
+      }
+      return `
+        <button class="${classes}" data-action="answer" data-index="${i}" ${answered ? "disabled" : ""}>
+          <span class="option__key">${i + 1}</span>
+          <span lang="en">${esc(option)}</span>
+        </button>`;
+    })
+    .join("");
+
+  const promptBlock =
+    round.mode === "gaps"
+      ? `<h2>${item.prompt}</h2>
+         <p class="sentence" lang="en">${
+           answered
+             ? esc(item.sentence).replace("____", `<mark>${esc(item.correct)}</mark>`)
+             : esc(item.sentence).replace("____", '<span class="blank">?</span>')
+         }</p>
+         <p class="prompt__sub">${item.sub}</p>
+         <p class="translation">${esc(item.example.es)}</p>`
+      : round.mode === "listen"
+        ? `<h2>${item.prompt}</h2>
+           <div class="listen-box">
+             ${speakerButton(item.heard, "el verbo otra vez", "speak--big speak--listening", clipOf(item.verb, item.form))}
+             <p>Escucha y elige el verbo</p>
+           </div>`
+        : `<h2>${item.prompt}</h2>
+           <p class="prompt__sub">${item.sub}</p>`;
+
+  const feedback = answered
+    ? `<div class="feedback ${isRight ? "feedback--ok" : "feedback--bad"}" role="status">
+         <div class="feedback__head">
+           <span aria-hidden="true">${isRight ? "✅" : "❌"}</span>
+           <span>${isRight ? "¡Muy bien! +1 estrella" : `Casi… la respuesta era «${esc(item.correct)}»`}</span>
+         </div>
+         <div class="trio">
+           <span><i>Infinitivo</i><b lang="en">${esc(item.verb.base)}</b></span>
+           <span><i>Pasado</i><b lang="en">${esc(item.verb.past)}</b></span>
+           <span><i>Participio</i><b lang="en">${esc(item.verb.participle)}</b></span>
+           ${speakerButton(
+             [item.verb.base, sayForm(item.verb, "past"), sayForm(item.verb, "participle")].join(". "),
+             "las tres formas",
+             "",
+             [clipOf(item.verb, "base"), clipOf(item.verb, "past"), clipOf(item.verb, "participle")]
+           )}
+         </div>
+         ${round.mode === "quiz" ? "" : `<p class="feedback__meaning">Significa: <b>${esc(item.verb.es)}</b></p>`}
+         ${exampleBlock(item.example, item.verb, { highlight: true })}
+       </div>
+       <div class="next-row">
+         <button class="btn btn--primary" data-action="next">
+           ${round.index === round.items.length - 1 ? "Ver resultado →" : "Siguiente →"}
+         </button>
+       </div>`
+    : "";
+
+  view.innerHTML = `
+    <div class="round-top">
+      <span class="chip chip--mode">${MODES[round.mode].icon} ${MODES[round.mode].name}</span>
+      <span class="chip">Pregunta ${round.index + 1} de ${round.items.length}</span>
+      <span class="round-top__spacer"></span>
+      <span class="stat" title="Aciertos seguidos">🔥 <b>${round.streak}</b></span>
+      <span class="stat" title="Aciertos">⭐ <b>${round.score}</b></span>
+    </div>
+    <div class="dots" aria-hidden="true">${dots}</div>
+
+    <div class="prompt">${promptBlock}</div>
+
+    <div class="options">${options}</div>
+    ${feedback}`;
+
+  if (round.mode === "listen" && !answered) {
+    const speaker = view.querySelector(".listen-box .speak");
+    if (speaker) speaker.classList.add("speak--listening");
+  }
+}
+
+function renderResult() {
+  const round = state.round;
+  const total = round.items.length;
+  const score = round.score;
+  const ratio = score / total;
+  const emoji = ratio === 1 ? "🏆" : ratio >= 0.8 ? "🎉" : ratio >= 0.5 ? "💪" : "🌱";
+  const title =
+    ratio === 1 ? "¡Perfecto!" : ratio >= 0.8 ? "¡Muy bien!" : ratio >= 0.5 ? "¡Buen trabajo!" : "¡Sigue practicando!";
+  const misses = [...new Set(round.misses)];
+
+  view.innerHTML = `
+    <div class="result card">
+      <div class="result__emoji" aria-hidden="true">${emoji}</div>
+      <h2>${title}</h2>
+      <p class="result__score">Has acertado <b>${score}</b> de ${total}</p>
+      <p class="result__stars">+${round.starsEarned} ⭐ · mejor racha: ${round.bestStreak}</p>
+
+      ${misses.length
+        ? `<div class="result__review">
+             <b>Para repasar:</b> ${misses.map((base) => `<span lang="en">${esc(base)}</span>`).join(", ")}
+             <div class="verb-grid" style="margin-top:10px">
+               ${misses
+                 .map((base) => {
+                   const verb = VERBS.find((candidate) => candidate.base === base);
+                   return `<button data-action="speak" data-say="${esc(`${verb.base}. ${verb.base}, ${verb.past}, ${verb.participle}.`)}" data-clips='${esc(JSON.stringify([clipOf(verb, "base"), clipOf(verb, "past"), clipOf(verb, "participle")]))}'>🔊 <span lang="en">${esc(base)}</span></button>`;
+                 })
+                 .join("")}
+             </div>
+           </div>`
+        : ""}
+
+      <div class="result__actions">
+        <button class="btn btn--primary" data-action="play" data-mode="${round.mode}">Jugar otra ronda ⭐</button>
+        <button class="btn" data-action="study">Ver las tarjetas 🃏</button>
+        <button class="btn btn--ghost btn--wide" data-action="home">Volver al inicio</button>
+      </div>
+    </div>`;
+}
+
+function render() {
+  document.getElementById("stat-stars").textContent = profile.stars;
+  document.getElementById("stat-streak").textContent = profile.bestStreak;
+
+  if (state.view === "play") renderRound();
+  else if (state.view === "study") renderStudy();
+  else renderHome();
+}
+
+/* =========================================================================
+   Round interaction
+   ========================================================================= */
+
+function speakCurrentIfNeeded() {
+  const round = state.round;
+  if (!round) return;
+  const item = round.items[round.index];
+  if (!item) return;
+  if (round.mode === "listen" && !round.answered) Player.say([clipOf(item.verb, item.form)], item.heard);
+}
+
+function answer(optionIndex) {
+  const round = state.round;
+  if (!round || round.answered) return;
+  const item = round.items[round.index];
+  const chosen = item.options[optionIndex];
+  if (chosen === undefined) return;
+
+  const isRight = chosen === item.correct;
+  round.answered = { index: optionIndex, right: isRight };
+  round.answers = round.answers || {};
+  round.answers[round.index] = isRight;
+  recordAnswer(item.verb, isRight);
+
+  if (isRight) {
+    round.score += 1;
+    round.starsEarned += 1;
+    round.streak += 1;
+    round.bestStreak = Math.max(round.bestStreak, round.streak);
+    profile.stars += 1;
+    profile.bestStreak = Math.max(profile.bestStreak, round.streak);
+    Sfx.right();
+  } else {
+    round.streak = 0;
+    if (!round.misses.includes(item.verb.base)) round.misses.push(item.verb.base);
+    Sfx.wrong();
+  }
+  saveProfile();
+  render();
+
+  const feedback = view.querySelector(".feedback");
+  if (feedback) feedback.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function nextQuestion() {
+  const round = state.round;
+  if (!round || !round.answered) return;
+  round.answered = null;
+  round.index += 1;
+
+  if (round.index >= round.items.length) {
+    profile.rounds += 1;
+    saveProfile();
+    render();
+    if (round.score / round.items.length >= 0.5) {
+      confetti();
+      Sfx.finish();
+    }
+    return;
+  }
+  render();
+  speakCurrentIfNeeded();
+}
+
+/* =========================================================================
+   Events
+   ========================================================================= */
+
+/* The brand button lives in the top bar, outside #view, so click delegation
+   sits on the document. */
+document.addEventListener("click", (event) => {
+  const trigger = event.target instanceof Element ? event.target.closest("[data-action]") : null;
+  if (!trigger) return;
+  const { action } = trigger.dataset;
+
+  if (action === "home") { go("home"); return; }
+  if (action === "study") { go("study"); return; }
+  if (action === "play") { go(trigger.dataset.mode); return; }
+
+  if (action === "speak") {
+    let clips = [];
+    try {
+      clips = JSON.parse(trigger.dataset.clips || "[]");
+    } catch {
+      clips = [];
+    }
+    Player.say(clips, trigger.dataset.say);
+    return;
+  }
+
+  if (action === "study-prev") {
+    state.study.index = Math.max(0, state.study.index - 1);
+    renderStudy();
+    return;
+  }
+  if (action === "study-next") {
+    state.study.index = Math.min(VERBS.length - 1, state.study.index + 1);
+    renderStudy();
+    return;
+  }
+  if (action === "study-jump") {
+    state.study.index = Number(trigger.dataset.index) || 0;
+    renderStudy();
+    const card = view.querySelector(".verb-card");
+    if (card) card.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+
+  if (action === "answer") { answer(Number(trigger.dataset.index)); return; }
+  if (action === "next") { nextQuestion(); return; }
+});
+
+view.addEventListener("input", (event) => {
+  const input = event.target instanceof Element ? event.target.closest('[data-role="study-filter"]') : null;
+  if (!input) return;
+  state.study.filter = input.value;
+  const caret = input.selectionStart;
+  renderStudy();
+  const next = view.querySelector('[data-role="study-filter"]');
+  if (next) {
+    next.focus();
+    next.setSelectionRange(caret, caret);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.target instanceof Element && event.target.closest("input, textarea")) return;
+
+  if (state.view === "play" && state.round) {
+    const round = state.round;
+    if (/^[1-4]$/.test(event.key) && !round.answered) {
+      answer(Number(event.key) - 1);
+      event.preventDefault();
+    } else if ((event.key === "Enter" || event.key === " ") && round.answered) {
+      nextQuestion();
+      event.preventDefault();
+    }
+    return;
+  }
+
+  if (state.view === "study") {
+    if (event.key === "ArrowRight") { state.study.index = Math.min(VERBS.length - 1, state.study.index + 1); renderStudy(); }
+    if (event.key === "ArrowLeft") { state.study.index = Math.max(0, state.study.index - 1); renderStudy(); }
+  }
+});
+
+/* =========================================================================
+   Boot
+   ========================================================================= */
+
+// Small debug hook: handy for teachers/tests to inspect the round without cheating.
+window.IVG = {
+  get state() { return state; },
+  get profile() { return profile; },
+  get verbs() { return VERBS; },
+  get player() { return Player; },
+  reset() {
+    profile = { ...EMPTY_PROFILE };
+    saveProfile();
+    state.study = { index: 0, filter: "" };
+    go("home");
+  }
+};
+
+Speech.onChange((missing) => {
+  if (missing) console.info("[verbos] no English system voice: recorded clips will be used");
+});
+
+Player.probe(clipOf(VERBS[0], "base")).then((ok) => {
+  state.audioMissing = !ok;
+  if (state.view === "home") renderHome();
+  if (!ok) console.info("[verbos] no recorded audio found: falling back to the browser voice");
+});
+
+const initial = location.hash.slice(1);
+if (MODES[initial]) startRound(initial);
+else if (initial === "study") { state.view = "study"; render(); }
+else render();
+</script>
+</body>
+</html>
