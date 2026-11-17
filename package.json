@@ -1,0 +1,17 @@
+{
+  "name": "juego-verbos-irregulares",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser game to learn English irregular verbs, with offline pronunciation and example sentences.",
+  "scripts": {
+    "check": "node scripts/check-data.mjs",
+    "audio": "node scripts/generate-audio.mjs",
+    "test": "node scripts/play-test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "msedge-tts": "^2.1.1"
+  }
+}

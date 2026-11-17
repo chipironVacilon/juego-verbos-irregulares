@@ -33,14 +33,15 @@ respaldo y avisa en la pantalla de inicio.
 Para **regenerar el audio** (p. ej. tras añadir verbos o cambiar la voz):
 
 ```bash
-node scripts/generate-audio.mjs          # solo lo que falte
-node scripts/generate-audio.mjs --force  # todo de nuevo
-TTS_VOICE=en-GB-RyanNeural node scripts/generate-audio.mjs --force   # otra voz
+npm install                              # una sola vez, necesita internet
+npm run audio                            # solo lo que falte
+npm run audio -- --force                 # todo de nuevo
+TTS_VOICE=en-GB-RyanNeural npm run audio -- --force   # otra voz
 ```
 
-Necesita `ffmpeg` en el sistema y internet la primera vez; el paquete que habla
-con el servicio de Microsoft ya viene incluido en `vendor/`. Voces británicas
-disponibles: Sonia (la usada), Libby, Maisie, Ryan, Thomas.
+Necesita `ffmpeg` en el sistema y conexión a internet cada vez que generes
+audio (habla con el servicio de Microsoft). Voces británicas disponibles:
+Sonia (la usada), Libby, Maisie, Ryan, Thomas.
 
 ## Archivos
 
@@ -49,7 +50,7 @@ disponibles: Sonia (la usada), Libby, Maisie, Ryan, Thomas.
 | `index.html` | El juego completo: pantallas, estilos y lógica. |
 | `verbs.js` | Los 54 verbos con sus dos frases de ejemplo y su traducción. |
 | `assets/audio/` | Las grabaciones en inglés (270 ficheros MP3, ~1,8 MB en total): 3 formas y 2 frases por verbo. |
-| `vendor/node_modules/` | Copia local del paquete `msedge-tts` (MIT) que usa el generador de audio. |
+| `package.json` | Dependencia de los scripts (`msedge-tts`); `npm install` una sola vez. |
 | `scripts/generate-audio.mjs` | Genera o regenera los MP3 con las voces neuronales británicas de Edge. |
 | `scripts/check-data.mjs` | Comprueba que `verbs.js` esté bien formado. |
 | `scripts/play-test.mjs` | Juega una ronda completa de cada modo en Chromium y verifica que todo funcione. |

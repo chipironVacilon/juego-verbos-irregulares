@@ -3,7 +3,7 @@
  * Generates the game's audio clips with Microsoft Edge neural voices
  * (via the msedge-tts package) and compresses them with ffmpeg.
  *
- *   npm install msedge-tts     (once, needs internet)
+ *   npm install                (once, needs internet)
  *   node scripts/generate-audio.mjs                 # everything missing
  *   node scripts/generate-audio.mjs --force eat     # regenerate one verb
  *   node scripts/generate-audio.mjs --list          # show what would be generated
@@ -30,19 +30,13 @@ const root = resolve(here, "..");
 const require = createRequire(import.meta.url);
 
 let MsEdgeTTS, OUTPUT_FORMAT;
-for (const base of [root, join(root, "vendor", "node_modules")]) {
-  try {
-    ({ MsEdgeTTS, OUTPUT_FORMAT } = createRequire(join(base, "noop.js"))("msedge-tts"));
-    break;
-  } catch {
-    /* try the next location */
-  }
-}
-if (!MsEdgeTTS) {
+try {
+  ({ MsEdgeTTS, OUTPUT_FORMAT } = createRequire(join(root, "noop.js"))("msedge-tts"));
+} catch {
   console.error(
-    "Falta el paquete msedge-tts. O lo instalas (necesita internet):\n" +
-      "  npm install msedge-tts\n" +
-      "o copias node_modules a vendor/node_modules (así viene este proyecto)."
+    "Falta la dependencia msedge-tts. Instálala desde la raíz del proyecto\n" +
+      "(necesita internet, una sola vez):\n" +
+      "  npm install"
   );
   process.exit(1);
 }
