@@ -374,6 +374,43 @@ await evaluate("document.querySelector('[data-action=speak]').click()");
 const afterMissing = await evaluate("IVG.player.fileMode");
 check(afterMissing === true, "después de un clip roto los grabados siguen sonando", `fileMode=${afterMissing}`);
 
+// Every speaker button must carry one text per clip, so a broken recording is
+// read with its own words instead of the whole fallback sentence repeated.
+const wiring = JSON.parse(
+  await evaluate(`(() => JSON.stringify(
+    [...document.querySelectorAll('[data-action=speak]')].map((button) => ({
+      clips: JSON.parse(button.dataset.clips || '[]').length,
+      texts: JSON.parse(button.dataset.clipTexts || '[]').length
+    }))
+  ))()`)
+);
+check(wiring.length > 0, "hay botones de audio que revisar", `${wiring.length}`);
+check(
+  wiring.every((entry) => entry.texts === entry.clips && entry.clips > 0),
+  "cada botón trae un texto por clip",
+  JSON.stringify(wiring)
+);
+
+// A missing clip must not stall the queue: the recording behind it still plays.
+const drained = JSON.parse(
+  await evaluate(`(() => new Promise((done) => {
+    IVG.player.say([
+      { clip: 'assets/audio/no-existe-2.mp3', text: 'docs' },
+      { clip: 'assets/audio/be/base.mp3', text: 'be' }
+    ], 'be');
+    const started = Date.now();
+    const poll = () => {
+      if (IVG.player.pending === 0 || Date.now() - started > 8000) {
+        done(JSON.stringify({ pending: IVG.player.pending, waited: Date.now() - started }));
+        return;
+      }
+      setTimeout(poll, 100);
+    };
+    setTimeout(poll, 100);
+  }))()`)
+);
+check(drained.pending === 0, "un clip que falta no traba la cola de audio", JSON.stringify(drained));
+
 /* ------------------------------------------------------- rondas nivel 1 ---- */
 
 async function playLevelOneRound(mode) {

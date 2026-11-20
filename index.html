@@ -986,8 +986,19 @@ const Player = (() => {
   let fileMode = null; // null: unknown yet · true: clips play · false: use the synth voice
   let probeDone = false;
   let runId = 0; // bumped on every stop, so a cancelled voice cannot advance us
+  let speaking = false; // the browser voice is reading an entry right now
+  let playing = false; // a clip element is loading or playing an entry
+  let voiceGuard = null; // watchdog for a voice that never reports the end
   /** Clips already found broken: later rounds skip them straight to the voice. */
   const missingClips = new Set();
+  // The game only ever asks for its own clips, so this set is bounded by the
+  // dataset; the cap is a guard against a markup bug inventing paths.
+  const MISSING_LIMIT = 64;
+
+  function rememberMissing(clip) {
+    missingClips.add(clip);
+    if (missingClips.size > MISSING_LIMIT) missingClips.delete(missingClips.values().next().value);
+  }
 
   /** Media errors that mean a clip is really broken (not a mere abort). */
   const realErrorCode = (audio) => {
@@ -1003,6 +1014,12 @@ const Player = (() => {
   function stop() {
     runId += 1;
     queue = [];
+    speaking = false;
+    playing = false;
+    if (voiceGuard) {
+      clearTimeout(voiceGuard);
+      voiceGuard = null;
+    }
     if (current) {
       const audio = current;
       current = null;
@@ -1023,12 +1040,23 @@ const Player = (() => {
       next();
       return;
     }
-    const started = Speech.say(entry.text, {
-      onend: () => {
-        if (id === runId) next();
+    speaking = true;
+    const done = () => {
+      if (voiceGuard) {
+        clearTimeout(voiceGuard);
+        voiceGuard = null;
       }
-    });
-    if (!started) next();
+      speaking = false;
+      if (id === runId) next();
+    };
+    // A browser with no voice engine behind it never fires `end`. Without this
+    // guard one silent sentence would strand the rest of the queue.
+    voiceGuard = setTimeout(() => {
+      Speech.stop();
+      done();
+    }, 600 + entry.text.length * 70);
+    const started = Speech.say(entry.text, { onend: done });
+    if (!started) done();
   }
 
   function next() {
@@ -1041,8 +1069,10 @@ const Player = (() => {
     const audio = current || new Audio();
     detach(audio);
     current = audio;
+    playing = true;
     audio.src = entry.clip;
     audio.onended = () => {
+      playing = false;
       detach(audio);
       next();
     };
@@ -1050,7 +1080,8 @@ const Player = (() => {
       if (audio.src && realErrorCode(audio)) {
         // Only this clip is broken or missing: remember it and let the browser
         // voice read it, so the other recordings keep playing.
-        missingClips.add(entry.clip);
+        rememberMissing(entry.clip);
+        playing = false;
         detach(audio);
         current = null;
         audio.pause();
@@ -1071,6 +1102,10 @@ const Player = (() => {
   return {
     get fileMode() {
       return fileMode;
+    },
+    /** Entries still in flight: queued, playing or being read by the voice. */
+    get pending() {
+      return queue.length + (playing ? 1 : 0) + (speaking ? 1 : 0);
     },
     /** Clips known to be missing, so a later round can check them. */
     get missing() {
@@ -1882,8 +1917,17 @@ document.addEventListener("click", (event) => {
     } catch {
       texts = [];
     }
+    if (texts.length === 0) {
+      // Older markup without per-clip texts: read the fallback once, instead of
+      // repeating the same sentence for every clip in the list.
+      Player.say(
+        clips.map((clip, i) => ({ clip, text: i === 0 ? trigger.dataset.say : "" })),
+        trigger.dataset.say
+      );
+      return;
+    }
     Player.say(
-      clips.map((clip, i) => ({ clip, text: texts[i] || trigger.dataset.say })),
+      clips.map((clip, i) => ({ clip, text: texts[i] || "" })),
       trigger.dataset.say
     );
     return;
