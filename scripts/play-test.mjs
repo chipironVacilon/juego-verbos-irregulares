@@ -165,6 +165,7 @@ await waitFor("!!window.IVG", "el juego arranca");
 
 const home = await evaluate(`(() => ({
   modes: document.querySelectorAll('.mode').length,
+  arcadeCard: (document.querySelector('.mode--arcade') || {}).textContent || '',
   stars: document.getElementById('stat-stars').textContent,
   practiced: document.querySelector('.progress-card p').textContent,
   hasBanner: !!document.querySelector('.banner'),
@@ -175,7 +176,12 @@ const home = await evaluate(`(() => ({
     pressed: node.getAttribute('aria-pressed')
   }))
 }))()`);
-check(home.modes === 4, "el inicio ofrece 4 modos", `encontrados ${home.modes}`);
+check(home.modes === 5, "el inicio ofrece 5 modos", `encontrados ${home.modes}`);
+check(
+  home.arcadeCard.includes("Arcade"),
+  "el inicio ofrece el arcade del marcianito",
+  home.arcadeCard
+);
 check(home.verbCount === 61, "el juego carga los 61 verbos", `cargó ${home.verbCount}`);
 check(home.levels.length === 2, "el inicio deja elegir nivel", JSON.stringify(home.levels));
 check(home.level === 2, "por defecto se juega el nivel 2", `nivel ${home.level}`);
@@ -634,6 +640,235 @@ check(
 );
 check(totals.stored === totals.stars, "las estrellas se guardan en el navegador", JSON.stringify(totals));
 check(totals.rounds === baseline.rounds + 3, "se cuentan las rondas jugadas", `${totals.rounds}`);
+
+/* --------------------------------------------------------------- arcade ---- */
+
+const ARROW_KEYS = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" };
+
+/** Live arcade state: HUD, verb on top, words on the board, alien and monsters. */
+const arcadeSnapshot = () =>
+  evaluate(`(() => {
+    const session = IVG.arcade;
+    const game = session.game;
+    const canvas = document.querySelector('.arcade__canvas');
+    const verbNode = document.querySelector('.arcade__verb');
+    const ctx = canvas && canvas.getContext('2d');
+    let painted = 0;
+    if (ctx) {
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let index = 3; index < pixels.length; index += 4 * 97) {
+        if (pixels[index] > 0) painted += 1;
+      }
+    }
+    return JSON.stringify({
+      view: IVG.state.view,
+      target: session.target.base,
+      past: session.target.past,
+      score: session.score,
+      stars: IVG.profile.stars,
+      best: IVG.profile.arcadeBest,
+      rounds: IVG.profile.rounds,
+      hudVerb: verbNode ? verbNode.textContent : '',
+      hudLang: verbNode ? verbNode.getAttribute('lang') : '',
+      points: (document.querySelector('.arcade__points') || {}).textContent || '',
+      hint: (document.querySelector('.arcade__hint') || {}).textContent || '',
+      words: game.words.map((word) => ({ r: word.r, c: word.c, text: word.text, correct: word.correct })),
+      player: { r: game.player.r, c: game.player.c },
+      monsters: game.monsters.length,
+      painted,
+      canvasWidth: canvas ? canvas.width : 0
+    });
+  })()`);
+
+/** Next direction the alien would take to reach one tile. */
+async function arcadeDirectionTo(goal) {
+  const raw = await evaluate(`(() => {
+    const game = IVG.arcade.game;
+    return JSON.stringify({
+      dir: ArcadeGame.stepTowards({ r: game.player.r, c: game.player.c }, { r: ${goal.r}, c: ${goal.c} }),
+      r: game.player.r,
+      c: game.player.c,
+      over: game.over
+    });
+  })()`);
+  return JSON.parse(raw);
+}
+
+/** Walk the alien to a tile with real arrow keys, one tile at a time. */
+async function walkArcadeTo(goal, budget = 60) {
+  for (let step = 0; step < budget; step += 1) {
+    const spot = await arcadeDirectionTo(goal);
+    if (spot.r === goal.r && spot.c === goal.c) return true;
+    if (spot.over || !spot.dir) return false;
+    await evaluate(
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: '${ARROW_KEYS[spot.dir]}', bubbles: true, cancelable: true }))`
+    );
+    await sleep(150);
+  }
+  return false;
+}
+
+await evaluate("location.hash = ''");
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio antes del arcade");
+const roundsBeforeArcade = await evaluate("IVG.profile.rounds");
+await evaluate("document.querySelector('[data-mode=arcade]').click()");
+await waitFor("IVG.state.view === 'arcade' && !!IVG.arcade", "arranca el arcade");
+
+const opened = JSON.parse(await arcadeSnapshot());
+const expectedPast = opened.past.split("/")[0].trim();
+check(opened.view === "arcade", "el arcade abre su propia pantalla", opened.view);
+check(
+  opened.canvasWidth > 0 && opened.painted > 0,
+  "el laberinto se dibuja en el lienzo",
+  `ancho ${opened.canvasWidth}, muestras pintadas ${opened.painted}`
+);
+check(
+  opened.hudVerb === opened.target && opened.hudLang === "en",
+  "el infinitivo del verbo preside la pantalla",
+  `${opened.hudVerb} (lang ${opened.hudLang})`
+);
+check(opened.words.length === 4, "el laberinto reparte cuatro palabras", `${opened.words.length}`);
+check(
+  opened.words.filter((word) => word.correct).length === 1,
+  "de las cuatro palabras solo una es el pasado correcto",
+  JSON.stringify(opened.words)
+);
+check(
+  opened.words.find((word) => word.correct).text === expectedPast,
+  "la palabra marcada como correcta es el pasado del verbo",
+  `${opened.words.find((word) => word.correct).text} ≠ ${expectedPast}`
+);
+check(opened.monsters === 3, "el laberinto tiene monstruos", `${opened.monsters}`);
+check(/flechas/i.test(opened.hint), "la pantalla explica que se juega con las flechas", opened.hint);
+await shot("08-arcade");
+
+// Scoring is checked without monsters so the walk cannot end in the middle;
+// the monsters get their own test below.
+await evaluate("IVG.arcade.game.monsters.length = 0");
+
+const arrowsWorked = JSON.parse(
+  await evaluate(`(() => {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    document.dispatchEvent(event);
+    return JSON.stringify({ prevented: event.defaultPrevented });
+  })()`)
+);
+check(arrowsWorked.prevented, "las flechas no desplazan la página al jugar");
+
+let sawWrongWord = false;
+let sawRightWord = false;
+for (let attempt = 0; attempt < 14 && !(sawWrongWord && sawRightWord); attempt += 1) {
+  const before = JSON.parse(await arcadeSnapshot());
+  const wrongWord = before.words.find((word) => !word.correct);
+  const goal = sawWrongWord ? before.words.find((word) => word.correct) : wrongWord;
+  await walkArcadeTo({ r: goal.r, c: goal.c });
+  const after = JSON.parse(await arcadeSnapshot());
+
+  if (after.target !== before.target) {
+    // The walk crossed the right word on the way: that is the scoring rule.
+    check(after.score === before.score + 1, "recoger el pasado correcto suma un punto", `${after.score} ≠ ${before.score + 1}`);
+    check(after.stars === before.stars + 1, "recoger el pasado correcto da una estrella", `${after.stars} ≠ ${before.stars + 1}`);
+    check(after.hudVerb === after.target, "el verbo de arriba cambia al acertar", `${after.hudVerb} → ${after.target}`);
+    check(after.hudVerb !== before.hudVerb, "la palabra nueva es otro verbo", `${before.hudVerb} → ${after.hudVerb}`);
+    check(
+      after.words.length === 4 && after.words.filter((word) => word.correct).length === 1,
+      "tras acertar se reparten cuatro palabras con una correcta",
+      JSON.stringify(after.words)
+    );
+    check(
+      after.words.find((word) => word.correct).text === after.past.split("/")[0].trim(),
+      "la palabra correcta es el pasado del verbo nuevo",
+      after.words.find((word) => word.correct).text
+    );
+    check(after.points === String(after.score), "el marcador de la pantalla sigue la puntuación", after.points);
+    sawRightWord = true;
+  } else if (after.player.r === wrongWord.r && after.player.c === wrongWord.c) {
+    check(after.score === before.score, "una palabra equivocada no suma puntos", `${after.score} ≠ ${before.score}`);
+    check(after.stars === before.stars, "una palabra equivocada no da estrellas", `${after.stars}`);
+    check(
+      after.words.length === 4 && after.words.find((word) => word.correct).text === before.words.find((w) => w.correct).text,
+      "la palabra correcta sigue en el tablero tras fallar",
+      JSON.stringify(after.words)
+    );
+    check(after.hudVerb === before.hudVerb, "fallar no cambia el verbo", after.hudVerb);
+    sawWrongWord = true;
+  }
+}
+
+check(sawWrongWord, "se puede comprobar que una palabra equivocada no puntúa");
+check(sawRightWord, "se puede comprobar que el pasado correcto puntúa");
+await shot("09-arcade-punto");
+
+// The level still rules the arcade: level 1 never shows a past form it does not teach.
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio antes del arcade del nivel 1");
+check((await evaluate("IVG.arcade")) === null, "salir del arcade termina la partida");
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="1"]').click()`);
+await waitFor("IVG.profile.level === 1", "nivel 1 antes del arcade");
+await evaluate("document.querySelector('[data-mode=arcade]').click()");
+await waitFor("!!IVG.arcade && IVG.state.view === 'arcade'", "el arcade en nivel 1");
+const levelOneArcade = JSON.parse(await arcadeSnapshot());
+check(LEVEL_ONE.includes(levelOneArcade.target), "nivel 1 arcade: el verbo es de los diez del nivel", levelOneArcade.target);
+check(
+  levelOneArcade.words.every((word) => levelOnePastPool.has(word.text)),
+  "nivel 1 arcade: no se cuelan pasados de fuera",
+  JSON.stringify(levelOneArcade.words.map((word) => word.text))
+);
+check(
+  levelOnePastPool.has(levelOneArcade.words.find((word) => word.correct).text),
+  "nivel 1 arcade: la respuesta es del pasado del nivel",
+  levelOneArcade.words.find((word) => word.correct).text
+);
+
+// A real run: standing still, a monster has to reach the alien.
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio antes de la partida real");
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="2"]').click()`);
+await waitFor("IVG.profile.level === 2", "vuelta al nivel 2 para la partida real");
+await evaluate("document.querySelector('[data-mode=arcade]').click()");
+await waitFor("!!IVG.arcade && IVG.state.view === 'arcade'", "el arcade arranca de nuevo");
+check((await evaluate("IVG.arcade.score")) === 0, "la partida nueva empieza a cero");
+check((await evaluate("IVG.arcade.game.monsters.length")) === 3, "la partida nueva trae sus monstruos");
+
+let gameOver = false;
+for (let attempt = 0; attempt < 200 && !gameOver; attempt += 1) {
+  gameOver = await evaluate("!!document.querySelector('.arcade__over')");
+  if (!gameOver) await sleep(100);
+}
+check(gameOver, "un monstruo acaba alcanzando al marcianito quieto");
+const over = JSON.parse(
+  await evaluate(`(() => {
+    const box = document.querySelector('.arcade__over');
+    return JSON.stringify({
+      text: box ? box.textContent : '',
+      title: box ? box.querySelector('h2').textContent : '',
+      score: IVG.arcade.score,
+      best: IVG.profile.arcadeBest,
+      rounds: IVG.profile.rounds,
+      stored: JSON.parse(localStorage.getItem('verbos-irregulares-v1') || '{}').arcadeBest,
+      replay: !!document.querySelector('[data-action=play][data-mode=arcade]')
+    });
+  })()`)
+);
+check(/monstruo/i.test(over.title), "el final avisa de que un monstruo te ha pillado", over.title);
+check(over.text.includes(String(over.score)), "el final muestra los puntos de la partida", over.text);
+check(over.best === over.score, "la partida fija el récord del arcade", `${over.best} ≠ ${over.score}`);
+check(over.stored === over.best, "el récord se guarda en el navegador", `${over.stored}`);
+check(over.rounds === roundsBeforeArcade + 1, "la partida cuenta como una ronda jugada", `${over.rounds}`);
+check(over.replay, "el final deja jugar otra partida");
+await shot("10-arcade-final");
+
+await evaluate("document.querySelector('[data-action=play][data-mode=arcade]').click()");
+await waitFor("!!IVG.arcade && IVG.state.view === 'arcade'", "jugar otra partida del arcade");
+check((await evaluate("IVG.arcade.score")) === 0, "jugar otra vez empieza una partida limpia");
+check((await evaluate("IVG.arcade.game.monsters.length")) === 3, "jugar otra vez devuelve los monstruos");
+check(
+  (await evaluate("!!document.querySelector('.arcade__canvas')")),
+  "jugar otra vez vuelve a pintar el laberinto"
+);
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio después del arcade");
 
 /* ------------------------------------------------------ audio + keyboard ---- */
 

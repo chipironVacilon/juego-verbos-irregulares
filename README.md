@@ -15,12 +15,19 @@ con doble clic.
 - **Completa la frase**: una frase con un hueco, su traducción como pista y cuatro
   formas para elegir.
 - **Escucha y adivina**: se oye el verbo en inglés y hay que reconocerlo entre cuatro.
+- **Arcade del marcianito**: un laberinto tipo Pac-Man. Arriba aparece un verbo en
+  infinitivo y por el laberinto hay cuatro palabras: con las flechas del teclado se
+  mueve al marcianito para recoger la que es su **pasado**, esquivando a los
+  monstruos. Cada acierto suma un punto, da una estrella y cambia el verbo; la
+  partida termina cuando un monstruo te alcanza. El récord del arcade se guarda en
+  el navegador.
 
 Cada ronda son 10 preguntas. Se ganan estrellas, se cuenta la racha y el progreso
 se guarda en el propio navegador (`localStorage`). Los verbos que falla aparecen
 más a menudo en las siguientes rondas.
 
-Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta.
+Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta. El
+arcade se juega con las flechas (`←` `↑` `→` `↓`).
 
 ## Niveles
 
@@ -35,9 +42,11 @@ La pantalla de inicio deja elegir nivel y la elección se guarda en el navegador
   nivel que aparece marcado la primera vez.
 
 Cada nivel arma sus propias opciones: en el nivel 1 las respuestas falsas salen de
-sus diez verbos, así que no se cuelan formas que todavía no se han estudiado. Las
-estrellas, la racha y las rondas son las mismas en los dos niveles; la barra de
-progreso cuenta solo los verbos del nivel elegido.
+sus diez verbos, así que no se cuelan formas que todavía no se han estudiado. El
+arcade también respeta el nivel: en el nivel 1 el verbo de arriba y las cuatro
+palabras del laberinto salen de esos diez verbos, y lo que se recoge es siempre el
+pasado. Las estrellas, la racha y las rondas son las mismas en los dos niveles; la
+barra de progreso cuenta solo los verbos del nivel elegido.
 
 ## La pronunciación
 
@@ -64,7 +73,8 @@ Sonia (la usada), Libby, Maisie, Ryan, Thomas.
 
 | Archivo | Qué es |
 | --- | --- |
-| `index.html` | El juego completo: pantallas, estilos y lógica. |
+| `index.html` | El juego completo: pantallas, estilos y lógica (incluida la pantalla y el marcador del arcade). |
+| `arcade.js` | El motor del arcade: laberinto, marcianito, monstruos, movimiento por casillas y dibujo en el lienzo. |
 | `verbs.js` | Los 61 verbos con sus dos frases de ejemplo y su traducción. |
 | `assets/audio/` | Las grabaciones en inglés (305 ficheros MP3, ~2 MB en total): 3 formas y 2 frases por verbo. |
 | `package.json` | Dependencia de los scripts (`msedge-tts`); `npm install` una sola vez. |
@@ -100,6 +110,7 @@ la ruta de `CHROME_PATH`).
   Primaria (p. ej. "nevera", "coger el autobús", "la paga").
 - Las frases usan el pasado simple y el presente perfecto, que son los tiempos que
   se trabajan en 6º de Primaria.
-- El juego no recoge datos ni envía nada a internet. Las estrellas y el progreso
-  se guardan solo en el navegador donde se juega; el botón de la barra superior
-  vuelve al inicio y `IVG.reset()` (desde la consola) borra el progreso.
+- El juego no recoge datos ni envía nada a internet. Las estrellas, el progreso y
+  el récord del arcade se guardan solo en el navegador donde se juega; el botón de
+  la barra superior vuelve al inicio y `IVG.reset()` (desde la consola) borra el
+  progreso.
