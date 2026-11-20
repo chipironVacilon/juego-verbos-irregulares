@@ -1101,8 +1101,10 @@ const Player = (() => {
       })
       .catch(() => {
         /* Autoplay policies reject playback without a user gesture; the next
-           click will play normally. Nothing is in flight, so stop counting it. */
-        playing = false;
+           click will play normally. Only stop counting this entry when it is
+           still the one in flight: a stale rejection must not clear a newer
+           clip that a later say() already started. */
+        if (current === audio) playing = false;
       });
   }
 
