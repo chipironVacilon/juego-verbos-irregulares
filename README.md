@@ -10,7 +10,7 @@ con doble clic.
 
 - **Tarjetas**: las tres formas del verbo (infinitivo, pasado, participio), el
   significado, un botón 🔊 por forma y dos frases de ejemplo (pasado simple y
-  presente perfecto) con su traducción. Hay buscador y una lista de los 54 verbos.
+  presente perfecto) con su traducción. Hay buscador y una lista de los 61 verbos.
 - **Quiz de formas**: ¿cuál es el pasado o el participio de…? Cuatro opciones.
 - **Completa la frase**: una frase con un hueco, su traducción como pista y cuatro
   formas para elegir.
@@ -21,6 +21,23 @@ se guarda en el propio navegador (`localStorage`). Los verbos que falla aparecen
 más a menudo en las siguientes rondas.
 
 Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta.
+
+## Niveles
+
+La pantalla de inicio deja elegir nivel y la elección se guarda en el navegador.
+
+- **Nivel 1**: los diez primeros verbos (`awake`, `be`, `beat`, `become`, `begin`,
+  `bend`, `bet`, `bind`, `bite`, `bleed`). Todas las actividades usan solo el
+  **infinitivo y el pasado**: las tarjetas enseñan esas dos formas con su frase en
+  pasado simple, el quiz pregunta el pasado, las frases van en pasado simple y la
+  escucha reproduce el pasado.
+- **Nivel 2**: los 61 verbos con las tres formas, como el juego de siempre. Es el
+  nivel que aparece marcado la primera vez.
+
+Cada nivel arma sus propias opciones: en el nivel 1 las respuestas falsas salen de
+sus diez verbos, así que no se cuelan formas que todavía no se han estudiado. Las
+estrellas, la racha y las rondas son las mismas en los dos niveles; la barra de
+progreso cuenta solo los verbos del nivel elegido.
 
 ## La pronunciación
 
@@ -48,8 +65,8 @@ Sonia (la usada), Libby, Maisie, Ryan, Thomas.
 | Archivo | Qué es |
 | --- | --- |
 | `index.html` | El juego completo: pantallas, estilos y lógica. |
-| `verbs.js` | Los 54 verbos con sus dos frases de ejemplo y su traducción. |
-| `assets/audio/` | Las grabaciones en inglés (270 ficheros MP3, ~1,8 MB en total): 3 formas y 2 frases por verbo. |
+| `verbs.js` | Los 61 verbos con sus dos frases de ejemplo y su traducción. |
+| `assets/audio/` | Las grabaciones en inglés (305 ficheros MP3, ~2 MB en total): 3 formas y 2 frases por verbo. |
 | `package.json` | Dependencia de los scripts (`msedge-tts`); `npm install` una sola vez. |
 | `scripts/generate-audio.mjs` | Genera o regenera los MP3 con las voces neuronales británicas de Edge. |
 | `scripts/check-data.mjs` | Comprueba que `verbs.js` esté bien formado. |
@@ -65,7 +82,9 @@ Sonia (la usada), Libby, Maisie, Ryan, Thomas.
    añade `speakPast` / `speakParticiple` con la palabra que debe decir la voz y un
    `tip` para explicarlo. Tras añadir verbos, regenera el audio:
    `node scripts/generate-audio.mjs`.
-4. Comprueba los datos y el juego:
+4. Si el verbo entra en el nivel 1, apúntalo también en `LEVEL_ONE_BASES`, dentro de
+   `index.html`; si no, el nivel 2 lo usará pero el nivel 1 no lo verá.
+5. Comprueba los datos y el juego:
 
 ```bash
 node scripts/check-data.mjs

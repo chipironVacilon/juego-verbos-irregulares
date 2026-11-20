@@ -168,16 +168,91 @@ const home = await evaluate(`(() => ({
   stars: document.getElementById('stat-stars').textContent,
   practiced: document.querySelector('.progress-card p').textContent,
   hasBanner: !!document.querySelector('.banner'),
-  verbCount: IVG.verbs.length
+  verbCount: IVG.verbs.length,
+  level: IVG.profile.level,
+  levels: [...document.querySelectorAll('[data-action=set-level]')].map((node) => ({
+    level: node.dataset.level,
+    pressed: node.getAttribute('aria-pressed')
+  }))
 }))()`);
 check(home.modes === 4, "el inicio ofrece 4 modos", `encontrados ${home.modes}`);
-check(home.verbCount === 54, "el juego carga los 54 verbos", `cargó ${home.verbCount}`);
+check(home.verbCount === 61, "el juego carga los 61 verbos", `cargó ${home.verbCount}`);
+check(home.levels.length === 2, "el inicio deja elegir nivel", JSON.stringify(home.levels));
+check(home.level === 2, "por defecto se juega el nivel 2", `nivel ${home.level}`);
+check(
+  home.levels.find((node) => node.level === "2")?.pressed === "true",
+  "el nivel 2 aparece marcado",
+  JSON.stringify(home.levels)
+);
 check(home.practiced.includes(`de ${home.verbCount} verbos`), "la barra de progreso usa el total", home.practiced);
 check(home.stars === "0", "empieza con 0 estrellas", home.stars);
 await shot("01-home");
 
+/* --------------------------------------------------------------- nivel 1 ---- */
+
+// The level 1 verb list, in the order the request gives it.
+const LEVEL_ONE = ["awake", "be", "beat", "become", "begin", "bend", "bet", "bind", "bite", "bleed"];
+const levelOneVerbs = LEVEL_ONE.map((base) => VERBS.find((verb) => verb.base === base));
+// "was / were" is one option in the quiz, so the pool holds both the raw field
+// and each of its variants.
+const levelOnePastPool = new Set(
+  levelOneVerbs.flatMap((verb) => [verb.past, ...verb.past.split("/").map((part) => part.trim())])
+);
+
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="1"]').click()`);
+await waitFor("IVG.profile.level === 1", "el nivel 1 queda seleccionado");
+const savedLevel = await evaluate("JSON.parse(localStorage.getItem('verbos-irregulares-v1') || '{}').level");
+check(savedLevel === 1, "el nivel elegido se guarda en el navegador", `guardado ${savedLevel}`);
+await shot("02-nivel-1-inicio");
+
+await evaluate("document.querySelector('[data-action=study]').click()");
+await waitFor("!!document.querySelector('.verb-card')", "las tarjetas del nivel 1");
+
+const levelOneStudy = JSON.parse(
+  await evaluate(`(() => JSON.stringify({
+    labels: [...document.querySelectorAll('.form-row__label')].map((node) => node.textContent.trim()),
+    values: [...document.querySelectorAll('.form-row__value')].map((node) => node.textContent.trim()),
+    examples: document.querySelectorAll('.verb-card .example').length,
+    index: [...document.querySelectorAll('.verb-grid button')].map((node) => node.textContent.trim()),
+    chip: document.querySelector('.verb-card__top .chip').textContent.trim(),
+    speaks: document.querySelectorAll('.verb-card [data-action=speak]').length
+  }))()`)
+);
+check(
+  levelOneStudy.labels.join(" | ") === "Infinitivo | Pasado",
+  "nivel 1: la tarjeta solo muestra infinitivo y pasado",
+  levelOneStudy.labels.join(" | ")
+);
+check(
+  levelOneStudy.values.join(" | ") === "awake | awoke",
+  "nivel 1: la primera tarjeta es awake / awoke",
+  levelOneStudy.values.join(" | ")
+);
+check(levelOneStudy.examples === 1, "nivel 1: solo la frase en pasado", `${levelOneStudy.examples}`);
+check(
+  levelOneStudy.index.join(",") === LEVEL_ONE.join(","),
+  "nivel 1: la lista tiene los 10 verbos del nivel",
+  JSON.stringify(levelOneStudy.index)
+);
+check(levelOneStudy.chip.includes("de 10"), "nivel 1: la tarjeta cuenta 10 verbos", levelOneStudy.chip);
+check(levelOneStudy.speaks === 3, "nivel 1: dos formas y una frase con audio", `${levelOneStudy.speaks}`);
+await shot("03-nivel-1-tarjetas");
+
+// Move the card pointer, then change level: the cards must start again.
+await evaluate("document.querySelector('[data-action=study-next]').click()");
+await evaluate("document.querySelector('[data-action=study-next]').click()");
+const levelOneThird = await evaluate("document.querySelector('.form-row__value').textContent.trim()");
+check(levelOneThird === "beat", "nivel 1: avanzar sigue el orden del nivel", levelOneThird);
+
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('[data-action=\"set-level\"][data-level=\"2\"]')", "volver al inicio");
+const levelOneHome = await evaluate("document.querySelector('.progress-card p').textContent");
+check(levelOneHome.includes("de 10 verbos"), "nivel 1: el progreso cuenta 10 verbos", levelOneHome);
+
 /* --------------------------------------------------------------- study ---- */
 
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="2"]').click()`);
+await waitFor("IVG.profile.level === 2", "volver al nivel 2");
 await evaluate("document.querySelector('[data-action=study]').click()");
 await waitFor("document.querySelector('.verb-card') !== null", "la pantalla de tarjetas");
 
@@ -225,7 +300,7 @@ for (const verb of VERBS) {
   );
 }
 const missingClips = expectedClips.filter((path) => !existsSync(path));
-check(missingClips.length === 0, "los 270 clips grabados existen", `faltan ${missingClips.length}`);
+check(missingClips.length === 0, `los ${expectedClips.length} clips grabados existen`, `faltan ${missingClips.length}`);
 
 const clipTotal = readdirSync(join(root, "assets", "audio")).reduce((sum, verbDir) => {
   const verbPath = join(root, "assets", "audio", verbDir);
@@ -279,17 +354,139 @@ await evaluate("document.querySelector('[data-action=speak]').click()");
 const stillTrue = await evaluate("IVG.player.fileMode");
 check(stillTrue === true, "después de navegar los clips siguen sonando", `fileMode=${stillTrue}`);
 
-// A missing clip must downgrade exactly once and only on a real load error.
+// A missing clip must fall back to the browser voice for that clip only:
+// the recorded clips of the rest of the game keep playing.
 const fakeResult = await evaluate(`(() => new Promise((done) => {
   IVG.player.say(['assets/audio/no-existe.mp3'], 'docs');
-  setTimeout(() => done(JSON.stringify({ fileMode: IVG.player.fileMode })), 1200);
+  setTimeout(() => done(JSON.stringify({
+    fileMode: IVG.player.fileMode,
+    missing: IVG.player.missing
+  })), 1200);
 }))()`);
 const fake = JSON.parse(fakeResult);
-check(fake.fileMode === false, "un clip inexistente activa el respaldo del navegador", JSON.stringify(fake));
-// A page reload resets fileMode to the boot probe; that path is what players see
-// after a broken state, and it is the boot behaviour already checked above.
+check(fake.fileMode === true, "un clip que falta no apaga las grabaciones del resto", JSON.stringify(fake));
+check(
+  fake.missing.includes("assets/audio/no-existe.mp3"),
+  "el clip que falta se recuerda",
+  JSON.stringify(fake.missing)
+);
+await evaluate("document.querySelector('[data-action=speak]').click()");
+const afterMissing = await evaluate("IVG.player.fileMode");
+check(afterMissing === true, "después de un clip roto los grabados siguen sonando", `fileMode=${afterMissing}`);
+
+/* ------------------------------------------------------- rondas nivel 1 ---- */
+
+async function playLevelOneRound(mode) {
+  await evaluate("document.querySelector('[data-action=home]').click()");
+  await waitFor("!!document.querySelector('.mode')", "inicio antes de la ronda de nivel 1");
+  await evaluate(`document.querySelector('[data-action="set-level"][data-level="1"]').click()`);
+  await waitFor("IVG.profile.level === 1", "nivel 1 antes de la ronda");
+  await evaluate(`document.querySelector('[data-mode=${mode}]').click()`);
+  await waitFor(
+    `IVG.state.round && IVG.state.round.mode === '${mode}'`,
+    `arranca ${mode} en nivel 1`
+  );
+
+  const items = JSON.parse(
+    await evaluate(`(() => JSON.stringify(IVG.state.round.items.map((item) => ({
+      form: item.form,
+      verb: item.verb.base,
+      options: item.options,
+      correct: item.correct,
+      prompt: item.prompt,
+      sub: item.sub,
+      sentence: item.sentence || ""
+    }))))()`)
+  );
+  const allowedPool = mode === "listen" ? new Set(LEVEL_ONE) : levelOnePastPool;
+
+  check(items.length === 10, `nivel 1 ${mode}: 10 preguntas, una por verbo`, `${items.length}`);
+  check(
+    items.every((item) => item.form === "past"),
+    `nivel 1 ${mode}: solo se practica el pasado`,
+    JSON.stringify(items.map((item) => item.form))
+  );
+  check(
+    items.every((item) => LEVEL_ONE.includes(item.verb)),
+    `nivel 1 ${mode}: solo los 10 verbos del nivel`,
+    JSON.stringify(items.map((item) => item.verb))
+  );
+  check(
+    items.every((item) => item.options.length === 4 && allowedPool.has(item.correct)),
+    `nivel 1 ${mode}: la respuesta es del pasado del nivel`,
+    JSON.stringify(items[0])
+  );
+  check(
+    items.every((item) => item.options.every((option) => allowedPool.has(option))),
+    `nivel 1 ${mode}: no se cuelan formas ni verbos de fuera`,
+    JSON.stringify(items[0].options)
+  );
+  if (mode === "quiz") {
+    check(
+      items.every((item) => item.prompt.includes("pasado") && !item.prompt.includes("participio")),
+      "nivel 1 quiz: nunca pide el participio",
+      items[0].prompt
+    );
+  }
+  if (mode === "gaps") {
+    check(
+      items.every((item) => !/\b(has|have)\b/i.test(item.sentence)),
+      "nivel 1 frases: nunca usa el presente perfecto",
+      items[0].sentence
+    );
+  }
+
+  const firstIndex = items[0].options.indexOf(items[0].correct);
+  await evaluate(`document.querySelectorAll('.option')[${firstIndex}].click()`);
+  const correction = JSON.parse(
+    await evaluate(`(() => JSON.stringify({
+      labels: [...document.querySelectorAll('.feedback .trio i')].map((node) => node.textContent.trim()),
+      audio: JSON.parse(document.querySelector('.feedback .trio [data-action=speak]').dataset.clips)
+    }))()`)
+  );
+  check(
+    correction.labels.join(" | ") === "Infinitivo | Pasado",
+    `nivel 1 ${mode}: la corrección enseña dos formas`,
+    correction.labels.join(" | ")
+  );
+  check(
+    correction.audio.length === 2 && correction.audio.every((clip) => !clip.includes("participle")),
+    `nivel 1 ${mode}: la corrección suena sin participio`,
+    JSON.stringify(correction.audio)
+  );
+  if (mode === "quiz") await shot("04-nivel-1-quiz");
+
+  for (let question = 1; question < items.length; question += 1) {
+    await evaluate("document.querySelector('[data-action=next]').click()");
+    const index = await evaluate("IVG.state.round.items[IVG.state.round.index].options.indexOf(IVG.state.round.items[IVG.state.round.index].correct)");
+    await evaluate(`document.querySelectorAll('.option')[${index}].click()`);
+  }
+  await evaluate("document.querySelector('[data-action=next]').click()");
+  const result = await evaluate("document.querySelector('.result__score').textContent");
+  check(result.includes("10"), `nivel 1 ${mode}: se puede terminar la ronda`, result);
+  await shot(`05-nivel-1-${mode}-resultado`);
+}
+
+await playLevelOneRound("quiz");
+await playLevelOneRound("gaps");
+await playLevelOneRound("listen");
+
+const afterLevelOne = JSON.parse(
+  await evaluate("JSON.stringify({ stars: IVG.profile.stars, rounds: IVG.profile.rounds })")
+);
+check(afterLevelOne.rounds === 3, "nivel 1: las rondas jugadas se cuentan", `${afterLevelOne.rounds}`);
+check(afterLevelOne.stars === 30, "nivel 1: las estrellas se guardan igual", `${afterLevelOne.stars}`);
+
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio después del nivel 1");
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="2"]').click()`);
+await waitFor("IVG.profile.level === 2", "volver al nivel 2 para el resto de pruebas");
 
 /* ---------------------------------------------------------- every mode ---- */
+
+const baseline = JSON.parse(
+  await evaluate("JSON.stringify({ stars: IVG.profile.stars, rounds: IVG.profile.rounds })")
+);
 
 async function playRound(mode, { correctCount }) {
   await evaluate("location.hash = ''");
@@ -430,9 +627,13 @@ const totals = JSON.parse(
     header: document.getElementById('stat-stars').textContent
   }))()`)
 );
-check(totals.stars === quizScore + gapsScore + listenScore, "las estrellas se acumulan entre rondas", JSON.stringify(totals));
+check(
+  totals.stars === baseline.stars + quizScore + gapsScore + listenScore,
+  "las estrellas se acumulan entre rondas",
+  JSON.stringify(totals)
+);
 check(totals.stored === totals.stars, "las estrellas se guardan en el navegador", JSON.stringify(totals));
-check(totals.rounds === 3, "se cuentan las rondas jugadas", `${totals.rounds}`);
+check(totals.rounds === baseline.rounds + 3, "se cuentan las rondas jugadas", `${totals.rounds}`);
 
 /* ------------------------------------------------------ audio + keyboard ---- */
 
@@ -488,6 +689,61 @@ await evaluate("document.querySelectorAll('.option')[0].click()");
 const mobileRound = await evaluate("document.documentElement.scrollWidth > window.innerWidth + 1");
 check(!mobileRound, "en móvil la ronda no desborda");
 await shot("07-movil-ronda");
+
+/* --------------------------------------------------- perfil y niveles ---- */
+
+// A profile saved before levels existed has no `level` field. It must come back
+// as level 2 (the whole game) with its stars, streaks and rounds intact.
+await evaluate(`(() => {
+  localStorage.setItem('verbos-irregulares-v1', JSON.stringify({
+    stars: 7,
+    bestStreak: 3,
+    rounds: 2,
+    verbs: { be: { seen: 2, right: 1, wrong: 1 } }
+  }));
+  return true;
+})()`);
+// The page restores its view from the hash, so go home before reloading.
+await evaluate("location.hash = ''");
+await send("Page.reload");
+await waitFor("!!window.IVG && !!document.querySelector('.mode')", "el juego rearranca con un perfil viejo");
+
+const migrated = JSON.parse(
+  await evaluate(`(() => JSON.stringify({
+    level: IVG.profile.level,
+    stars: IVG.profile.stars,
+    rounds: IVG.profile.rounds,
+    bestStreak: IVG.profile.bestStreak,
+    pressed: document.querySelector('[data-level="2"]').getAttribute('aria-pressed'),
+    headStars: document.getElementById('stat-stars').textContent
+  }))()`)
+);
+check(migrated.level === 2, "un perfil sin nivel entra en el nivel 2", `nivel ${migrated.level}`);
+check(
+  migrated.stars === 7 && migrated.rounds === 2 && migrated.bestStreak === 3,
+  "el perfil viejo conserva estrellas, racha y rondas",
+  JSON.stringify(migrated)
+);
+check(
+  migrated.pressed === "true" && migrated.headStars === "7",
+  "la pantalla arranca en el nivel 2 con las estrellas guardadas",
+  JSON.stringify(migrated)
+);
+
+// And the level the player picks survives a reload.
+await evaluate(`document.querySelector('[data-action="set-level"][data-level="1"]').click()`);
+await waitFor("IVG.profile.level === 1", "nivel 1 elegido antes de recargar");
+await send("Page.reload");
+await waitFor("!!window.IVG && !!document.querySelector('.mode')", "el juego rearranca con el nivel 1");
+
+const reloadedLevel = JSON.parse(
+  await evaluate(`(() => JSON.stringify({
+    level: IVG.profile.level,
+    pressed: document.querySelector('[data-level="1"]').getAttribute('aria-pressed')
+  }))()`)
+);
+check(reloadedLevel.level === 1, "el nivel elegido sobrevive a una recarga", `nivel ${reloadedLevel.level}`);
+check(reloadedLevel.pressed === "true", "el nivel 1 sigue marcado tras recargar", JSON.stringify(reloadedLevel));
 
 /* ----------------------------------------------------------------- done ---- */
 

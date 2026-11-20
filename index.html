@@ -670,6 +670,46 @@
     .result__actions .btn--wide { grid-column: 1 / -1; }
   }
 
+  /* ---------- levels ---------- */
+
+  .levels {
+    display: grid;
+    gap: 10px;
+    margin: 18px 0 6px;
+  }
+
+  @media (min-width: 620px) {
+    .levels { grid-template-columns: 1fr 1fr; }
+  }
+
+  .level {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 13px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  }
+
+  .level:hover { background: var(--card-strong); transform: translateY(-1px); }
+  .level:active { transform: translateY(0); }
+  .level b { font-size: 0.98rem; }
+  .level small { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+
+  .level.is-current {
+    border-color: rgba(139, 124, 255, 0.85);
+    background: linear-gradient(180deg, rgba(139, 124, 255, 0.22), rgba(139, 124, 255, 0.07));
+    box-shadow: inset 0 0 0 1px rgba(139, 124, 255, 0.35);
+  }
+
+  .level.is-current b { color: #cfc4ff; }
+
   /* ---------- footnote + confetti ---------- */
 
   .footnote {
@@ -762,13 +802,14 @@ function sayForm(verb, form) {
   if (form === "past") return verb.speakPast || firstForm(verb.past);
   return verb.speakParticiple || firstForm(verb.participle);
 }
-
 /* =========================================================================
    Progress (localStorage, best effort)
    ========================================================================= */
 
 const STORAGE_KEY = "verbos-irregulares-v1";
-const EMPTY_PROFILE = { stars: 0, bestStreak: 0, rounds: 0, verbs: {} };
+// Level 2 is the whole game, so a profile saved before levels existed keeps
+// playing exactly what it used to.
+const EMPTY_PROFILE = { level: 2, stars: 0, bestStreak: 0, rounds: 0, verbs: {} };
 
 function loadProfile() {
   try {
@@ -776,6 +817,7 @@ function loadProfile() {
     if (!raw) return { ...EMPTY_PROFILE };
     const parsed = JSON.parse(raw);
     return {
+      level: Number(parsed.level) === 1 ? 1 : 2,
       stars: Number(parsed.stars) || 0,
       bestStreak: Number(parsed.bestStreak) || 0,
       rounds: Number(parsed.rounds) || 0,
@@ -810,7 +852,8 @@ function recordAnswer(verb, isRight) {
   saveProfile();
 }
 
-const practicedCount = () => Object.values(profile.verbs).filter((stats) => stats.seen > 0).length;
+/** Verbs of one level already practised, for the home progress bar. */
+const practicedCount = (verbs) => verbs.filter((verb) => statsFor(verb).seen > 0).length;
 
 /** Verbs answered wrongly come back more often; easy ones fade out a bit. */
 function weightOf(verb) {
@@ -887,6 +930,7 @@ const Speech = (() => {
       utterance.rate = options.rate || 0.85;
       utterance.pitch = 1;
       if (voice) utterance.voice = voice;
+      utterance.onend = typeof options.onend === "function" ? options.onend : null;
       try {
         synth.cancel();
         synth.speak(utterance);
@@ -910,18 +954,40 @@ const clipOf = (verb, form) => `${CLIP_ROOT}${verb.base}/${form}.mp3`;
 const exampleClip = (verb, example) =>
   `${CLIP_ROOT}${verb.base}/example-${verb.examples.indexOf(example) + 1}.mp3`;
 
+/*
+ * One recorded clip together with the text the browser voice must say when that
+ * file is missing, so a gap in the recordings never silences the rest.
+ */
+const clipEntry = (verb, form) => ({ clip: clipOf(verb, form), text: sayForm(verb, form) });
+const exampleEntry = (verb, example) => ({ clip: exampleClip(verb, example), text: example.en });
+
+const FORM_LABELS = { base: "Infinitivo", past: "Pasado", participle: "Participio" };
+
+/** The forms the current level teaches, as clip entries. */
+const formEntries = (verb) => currentLevel().forms.map((form) => clipEntry(verb, form));
+
+/** The same forms, ready to paint on the card and in the correction. */
+const formRows = (verb) =>
+  currentLevel().forms.map((form) => ({ form, label: FORM_LABELS[form], value: verb[form] }));
+
 /** A button that plays recorded clips, falling back to the browser voice. */
 function speakerButton(text, label, extraClass, clips) {
-  const audio = Array.isArray(clips) ? clips : clips ? [clips] : [];
-  return `<button class="speak ${extraClass || ""}" data-action="speak" data-say="${esc(text)}" data-clips='${esc(JSON.stringify(audio))}' aria-label="Escuchar ${esc(label)}">🔊</button>`;
+  const entries = (Array.isArray(clips) ? clips : clips ? [clips] : []).map((entry) =>
+    typeof entry === "string" ? { clip: entry, text } : entry
+  );
+  const paths = entries.map((entry) => entry.clip);
+  const texts = entries.map((entry) => entry.text);
+  return `<button class="speak ${extraClass || ""}" data-action="speak" data-say="${esc(text)}" data-clips='${esc(JSON.stringify(paths))}' data-clip-texts='${esc(JSON.stringify(texts))}' aria-label="Escuchar ${esc(label)}">🔊</button>`;
 }
 
 const Player = (() => {
   let queue = [];
   let current = null;
-  let spokenText = "";
   let fileMode = null; // null: unknown yet · true: clips play · false: use the synth voice
   let probeDone = false;
+  let runId = 0; // bumped on every stop, so a cancelled voice cannot advance us
+  /** Clips already found broken: later rounds skip them straight to the voice. */
+  const missingClips = new Set();
 
   /** Media errors that mean a clip is really broken (not a mere abort). */
   const realErrorCode = (audio) => {
@@ -935,6 +1001,7 @@ const Player = (() => {
   }
 
   function stop() {
+    runId += 1;
     queue = [];
     if (current) {
       const audio = current;
@@ -946,26 +1013,50 @@ const Player = (() => {
       audio.removeAttribute("src");
       audio.load();
     }
+    Speech.stop();
+  }
+
+  /** Read one entry with the browser voice, then carry on with the queue. */
+  function speakEntry(entry) {
+    const id = runId;
+    if (!entry.text) {
+      next();
+      return;
+    }
+    const started = Speech.say(entry.text, {
+      onend: () => {
+        if (id === runId) next();
+      }
+    });
+    if (!started) next();
   }
 
   function next() {
-    const clip = queue.shift();
-    if (clip === undefined) return;
+    const entry = queue.shift();
+    if (entry === undefined) return;
+    if (missingClips.has(entry.clip)) {
+      speakEntry(entry);
+      return;
+    }
     const audio = current || new Audio();
     detach(audio);
     current = audio;
-    audio.src = clip;
+    audio.src = entry.clip;
     audio.onended = () => {
       detach(audio);
       next();
     };
     audio.onerror = () => {
       if (audio.src && realErrorCode(audio)) {
-        // The clip itself is broken or missing: the synth voice takes over for good.
-        fileMode = false;
-        probeDone = true;
-        stop();
-        Speech.say(spokenText);
+        // Only this clip is broken or missing: remember it and let the browser
+        // voice read it, so the other recordings keep playing.
+        missingClips.add(entry.clip);
+        detach(audio);
+        current = null;
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        speakEntry(entry);
       } else {
         // Aborted load (usually cleared mid-flight): not evidence about the clips.
         stop();
@@ -981,19 +1072,30 @@ const Player = (() => {
     get fileMode() {
       return fileMode;
     },
-    /** clips: file paths · text: what the browser voice should say instead. */
+    /** Clips known to be missing, so a later round can check them. */
+    get missing() {
+      return [...missingClips];
+    },
+    /** clips: {clip, text} entries or plain paths · text: overall fallback. */
     say(clips, text) {
       stop();
-      spokenText = text;
-      if (clips.length > 0 && fileMode !== false) {
+      const entries = (clips || []).map((entry) =>
+        typeof entry === "string" ? { clip: entry, text } : entry
+      );
+      if (entries.length > 0 && fileMode !== false) {
         // Recorded audio is the default; if the probe has not answered yet we
-        // still try optimistically: one broken clip downgrades on its own error.
-        queue = clips.slice();
+        // still try optimistically: a broken clip is handled on its own error.
+        queue = entries;
         next();
         return;
       }
       fileMode = false;
-      Speech.say(text);
+      const id = runId;
+      Speech.say(text, {
+        onend: () => {
+          if (id === runId) next();
+        }
+      });
     },
     stop,
     /** Boot probe: do we have recorded audio in this environment? */
@@ -1137,6 +1239,62 @@ const MODES = {
   listen: { name: "Escucha", icon: "🎧", accent: "var(--listen)" }
 };
 
+/* =========================================================================
+   Levels
+   ========================================================================= */
+
+/** Level 1 verbs, in the order the level teaches them. */
+const LEVEL_ONE_BASES = [
+  "awake",
+  "be",
+  "beat",
+  "become",
+  "begin",
+  "bend",
+  "bet",
+  "bind",
+  "bite",
+  "bleed"
+];
+
+const LEVELS = {
+  1: {
+    number: 1,
+    name: "Nivel 1",
+    lead: "El infinitivo y el pasado",
+    forms: ["base", "past"],
+    bases: LEVEL_ONE_BASES
+  },
+  2: {
+    number: 2,
+    name: "Nivel 2",
+    lead: "Las tres formas",
+    forms: ["base", "past", "participle"],
+    bases: null // every verb in verbs.js
+  }
+};
+
+const currentLevel = () => LEVELS[profile.level] || LEVELS[2];
+const showsParticiple = () => currentLevel().forms.includes("participle");
+
+/** The verbs of one level: the level's own list, or the whole dataset. */
+function verbsOfLevel(level = currentLevel()) {
+  if (!level.bases) return VERBS;
+  return level.bases.map((base) => VERBS.find((verb) => verb.base === base)).filter(Boolean);
+}
+
+function setLevel(level) {
+  const chosen = LEVELS[level];
+  if (!chosen || chosen.number === profile.level) return;
+  profile.level = chosen.number;
+  saveProfile();
+  state.round = null;
+  state.study.index = 0;
+  state.view = "home";
+  if (location.hash) location.hash = "";
+  else render();
+}
+
 /** All single-word variants of a form, used as plausible wrong answers. */
 function distractorPool(verbs, form) {
   const words = new Set();
@@ -1148,8 +1306,13 @@ function distractorPool(verbs, form) {
   return [...words];
 }
 
-const PAST_POOL = distractorPool(VERBS, "past");
-const PARTICIPLE_POOL = distractorPool(VERBS, "participle");
+/** Wrong-answer pool of the current level, so no outside word leaks into it. */
+const poolCache = new Map();
+function poolFor(form) {
+  const key = `${profile.level}:${form}`;
+  if (!poolCache.has(key)) poolCache.set(key, distractorPool(verbsOfLevel(), form));
+  return poolCache.get(key);
+}
 
 function optionsFor(correct, pool) {
   const wrong = shuffle(pool.filter((word) => word.toLowerCase() !== correct.toLowerCase())).slice(0, 3);
@@ -1168,16 +1331,18 @@ function pairExample(verb, form) {
 function buildQuestion(mode, verb) {
   const past = pairExample(verb, "past");
   const participle = pairExample(verb, "participle");
+  const withParticiple = showsParticiple();
 
   if (mode === "quiz") {
-    const form = verb.participle !== verb.past && Math.random() < 0.5 ? "participle" : "past";
+    const form =
+      withParticiple && verb.participle !== verb.past && Math.random() < 0.5 ? "participle" : "past";
     const correct = form === "past" ? verb.past : verb.participle;
     return {
       verb,
       form,
       prompt: `¿Cuál es el <b class="hl">${form === "past" ? "pasado" : "participio"}</b> de <b class="hl">${esc(verb.base)}</b>?`,
       sub: `«${esc(verb.base)}» significa “${esc(verb.es)}”`,
-      options: optionsFor(correct, form === "past" ? PAST_POOL : PARTICIPLE_POOL),
+      options: optionsFor(correct, poolFor(form)),
       correct,
       answerKind: "form",
       speak: sayForm(verb, "base"),
@@ -1186,9 +1351,9 @@ function buildQuestion(mode, verb) {
   }
 
   if (mode === "gaps") {
-    const example = Math.random() < 0.5 ? past : participle;
+    const example = !withParticiple || Math.random() < 0.5 ? past : participle;
     const correct = example.target;
-    const pool = example.form === "past" ? PAST_POOL : PARTICIPLE_POOL;
+    const pool = poolFor(example.form);
     return {
       verb,
       form: example.form,
@@ -1204,10 +1369,11 @@ function buildQuestion(mode, verb) {
   }
 
   // listen: hear a form, then choose the verb
-  const form = verb.participle !== verb.past && Math.random() < 0.4 ? "participle" : "past";
+  const form = withParticiple && verb.participle !== verb.past && Math.random() < 0.4 ? "participle" : "past";
   const spokenLabel = sayForm(verb, form);
+  const levelVerbs = verbsOfLevel();
   const verbOptions = shuffle(
-    [verb, ...shuffle(VERBS.filter((candidate) => candidate.base !== verb.base)).slice(0, 3)]
+    [verb, ...shuffle(levelVerbs.filter((candidate) => candidate.base !== verb.base)).slice(0, 3)]
   ).map((candidate) => candidate.base);
   return {
     verb,
@@ -1225,9 +1391,11 @@ function buildQuestion(mode, verb) {
 
 function startRound(mode) {
   stopConfetti();
-  const verbs = weightedSample(VERBS, ROUND_SIZE, weightOf);
+  const levelVerbs = verbsOfLevel();
+  const verbs = weightedSample(levelVerbs, Math.min(ROUND_SIZE, levelVerbs.length), weightOf);
   state.round = {
     mode,
+    level: profile.level,
     items: verbs.map((verb) => buildQuestion(mode, verb)),
     index: 0,
     score: 0,
@@ -1293,7 +1461,7 @@ function exampleBlock(example, verb, options = {}) {
   return `
     <div class="example">
       <div class="example__en">
-        ${speakerButton(example.en, "la frase", "", exampleClip(verb, example))}
+        ${speakerButton(example.en, "la frase", "", exampleEntry(verb, example))}
         <span>${en}</span>
       </div>
       <p class="example__es">${esc(example.es)}</p>
@@ -1302,8 +1470,11 @@ function exampleBlock(example, verb, options = {}) {
 }
 
 function renderHome() {
-  const practiced = practicedCount();
-  const percent = Math.round((practiced / VERBS.length) * 100);
+  const verbs = verbsOfLevel();
+  const level = currentLevel();
+  const withParticiple = showsParticiple();
+  const practiced = practicedCount(verbs);
+  const percent = Math.round((practiced / verbs.length) * 100);
   const noClips = state.audioMissing === true;
   const noSynth = !Speech.supported || Speech.missing;
 
@@ -1312,8 +1483,21 @@ function renderHome() {
       <p class="eyebrow">Inglés · 6º de Primaria</p>
       <h1>Verbos <em>irregulares</em></h1>
       <p class="lead">Escucha cómo se pronuncian, elige la forma correcta y completa frases.
-        ${VERBS.length} verbos con ejemplos y su traducción al español.</p>
+        ${verbs.length} verbos con ejemplos y su traducción al español.</p>
     </section>
+
+    <div class="levels" role="group" aria-label="Elegir nivel">
+      ${Object.values(LEVELS)
+        .map((option) => {
+          const isCurrent = option.number === profile.level;
+          return `
+        <button class="level ${isCurrent ? "is-current" : ""}" data-action="set-level" data-level="${option.number}" aria-pressed="${isCurrent}">
+          <b>${option.name}</b>
+          <small>${option.lead} · ${verbsOfLevel(option).length} verbos</small>
+        </button>`;
+        })
+        .join("")}
+    </div>
 
     ${!noClips && !noSynth ? "" : noClips && noSynth ? `
       <div class="banner" role="status">
@@ -1333,7 +1517,9 @@ function renderHome() {
         <span class="mode__icon" aria-hidden="true">🃏</span>
         <span class="mode__body">
           <b>Tarjetas para estudiar</b>
-          <small>Las tres formas, cómo se dicen y dos frases de ejemplo con su traducción.</small>
+          <small>${withParticiple
+            ? "Las tres formas, cómo se dicen y dos frases de ejemplo con su traducción."
+            : "El infinitivo, el pasado y una frase de ejemplo con su traducción."}</small>
         </span>
         <span class="mode__go" aria-hidden="true">→</span>
       </button>
@@ -1342,7 +1528,9 @@ function renderHome() {
         <span class="mode__icon" aria-hidden="true">⚡</span>
         <span class="mode__body">
           <b>Quiz de formas</b>
-          <small>¿Cuál es el pasado o el participio? Elige entre cuatro opciones.</small>
+          <small>${withParticiple
+            ? "¿Cuál es el pasado o el participio? Elige entre cuatro opciones."
+            : "¿Cuál es el pasado? Elige entre cuatro opciones."}</small>
         </span>
         <span class="mode__go" aria-hidden="true">→</span>
       </button>
@@ -1351,7 +1539,9 @@ function renderHome() {
         <span class="mode__icon" aria-hidden="true">✏️</span>
         <span class="mode__body">
           <b>Completa la frase</b>
-          <small>Una frase con un hueco y su traducción: elige la forma que falta.</small>
+          <small>${withParticiple
+            ? "Una frase con un hueco y su traducción: elige la forma que falta."
+            : "Una frase en pasado con un hueco y su traducción: elige la forma que falta."}</small>
         </span>
         <span class="mode__go" aria-hidden="true">→</span>
       </button>
@@ -1367,23 +1557,26 @@ function renderHome() {
     </div>
 
     <section class="progress-card card">
-      <h2>Tu progreso</h2>
+      <h2>Tu progreso en el ${level.name.toLowerCase()}</h2>
       <div class="bar"><span style="width:${percent}%"></span></div>
-      <p>${practiced} de ${VERBS.length} verbos practicados · ${profile.rounds} rondas jugadas · mejor racha: ${profile.bestStreak}</p>
+      <p>${practiced} de ${verbs.length} verbos practicados · ${profile.rounds} rondas jugadas · mejor racha: ${profile.bestStreak}</p>
     </section>`;
 }
 
 function renderStudy() {
-  const verb = VERBS[state.study.index] || VERBS[0];
+  const level = currentLevel();
+  const verbs = verbsOfLevel();
+  const index = Math.min(state.study.index, verbs.length - 1);
+  const verb = verbs[index] || verbs[0];
   const filter = state.study.filter.trim().toLowerCase();
-  const listed = VERBS.filter(
+  const listed = verbs.filter(
     (candidate) =>
       !filter ||
       candidate.base.toLowerCase().includes(filter) ||
       candidate.es.toLowerCase().includes(filter)
   );
   const pastExample = pairExample(verb, "past");
-  const participleExample = pairExample(verb, "participle");
+  const participleExample = showsParticiple() ? pairExample(verb, "participle") : null;
 
   view.innerHTML = `
     <div class="screen-head">
@@ -1393,57 +1586,52 @@ function renderStudy() {
 
     <article class="verb-card card">
       <div class="verb-card__top">
-        <span class="chip">Verbo ${state.study.index + 1} de ${VERBS.length}</span>
+        <span class="chip">${level.name} · Verbo ${index + 1} de ${verbs.length}</span>
         <span class="verb-card__meaning">${esc(verb.es)}</span>
       </div>
 
       <div class="forms">
-        <div class="form-row form-row--base">
-          <span class="form-row__label">Infinitivo</span>
-          <span class="form-row__value" lang="en">${esc(verb.base)}</span>
-          ${speakerButton(sayForm(verb, "base"), verb.base, "", clipOf(verb, "base"))}
-        </div>
-        <div class="form-row">
-          <span class="form-row__label">Pasado</span>
-          <span class="form-row__value" lang="en">${esc(verb.past)}</span>
-          ${speakerButton(sayForm(verb, "past"), verb.past, "", clipOf(verb, "past"))}
-        </div>
-        <div class="form-row">
-          <span class="form-row__label">Participio</span>
-          <span class="form-row__value" lang="en">${esc(verb.participle)}</span>
-          ${speakerButton(sayForm(verb, "participle"), verb.participle, "", clipOf(verb, "participle"))}
-        </div>
+        ${formRows(verb)
+          .map(
+            (row, rowIndex) => `
+        <div class="form-row ${rowIndex === 0 ? "form-row--base" : ""}">
+          <span class="form-row__label">${row.label}</span>
+          <span class="form-row__value" lang="en">${esc(row.value)}</span>
+          ${speakerButton(row.value, row.value, "", clipEntry(verb, row.form))}
+        </div>`
+          )
+          .join("")}
       </div>
 
       <div class="examples">
         ${exampleBlock(pastExample, verb, { highlight: true })}
-        ${exampleBlock(participleExample, verb, { highlight: true })}
+        ${participleExample ? exampleBlock(participleExample, verb, { highlight: true }) : ""}
       </div>
 
       ${verb.tip ? `<p class="tip">💡 ${esc(verb.tip)}</p>` : ""}
     </article>
 
     <div class="study-nav">
-      <button class="btn" data-action="study-prev" ${state.study.index === 0 ? "disabled" : ""}>← Anterior</button>
+      <button class="btn" data-action="study-prev" ${index === 0 ? "disabled" : ""}>← Anterior</button>
       <span class="study-nav__spacer"></span>
-      <button class="btn btn--primary" data-action="study-next" ${state.study.index === VERBS.length - 1 ? "disabled" : ""}>Siguiente →</button>
+      <button class="btn btn--primary" data-action="study-next" ${index === verbs.length - 1 ? "disabled" : ""}>Siguiente →</button>
     </div>
 
     <section class="verb-index card">
-      <h2>Todos los verbos</h2>
+      <h2>${level.number === 1 ? "Verbos del nivel" : "Todos los verbos"}</h2>
       <input class="search" type="search" placeholder="Buscar en inglés o en español…" value="${esc(state.study.filter)}" data-role="study-filter" aria-label="Buscar verbo">
       <div class="verb-grid">
         ${listed
           .map(
             (candidate) => `
-          <button data-action="study-jump" data-index="${VERBS.indexOf(candidate)}"
+          <button data-action="study-jump" data-index="${verbs.indexOf(candidate)}"
             aria-current="${candidate.base === verb.base ? "true" : "false"}">
             ${esc(candidate.base)}
           </button>`
           )
           .join("")}
       </div>
-    </div>`;
+    </section>`;
 }
 
 function renderRound() {
@@ -1455,6 +1643,8 @@ function renderRound() {
   const item = round.items[round.index];
   const answered = round.answered;
   const isRight = answered && answered.index === item.options.indexOf(item.correct);
+  const trioRows = formRows(item.verb);
+  const trioEntries = formEntries(item.verb);
 
   const dots = round.items
     .map((candidate, i) => {
@@ -1494,7 +1684,7 @@ function renderRound() {
       : round.mode === "listen"
         ? `<h2>${item.prompt}</h2>
            <div class="listen-box">
-             ${speakerButton(item.heard, "el verbo otra vez", "speak--big speak--listening", clipOf(item.verb, item.form))}
+             ${speakerButton(item.heard, "el verbo otra vez", "speak--big speak--listening", clipEntry(item.verb, item.form))}
              <p>Escucha y elige el verbo</p>
            </div>`
         : `<h2>${item.prompt}</h2>
@@ -1507,14 +1697,12 @@ function renderRound() {
            <span>${isRight ? "¡Muy bien! +1 estrella" : `Casi… la respuesta era «${esc(item.correct)}»`}</span>
          </div>
          <div class="trio">
-           <span><i>Infinitivo</i><b lang="en">${esc(item.verb.base)}</b></span>
-           <span><i>Pasado</i><b lang="en">${esc(item.verb.past)}</b></span>
-           <span><i>Participio</i><b lang="en">${esc(item.verb.participle)}</b></span>
+           ${trioRows.map((row) => `<span><i>${row.label}</i><b lang="en">${esc(row.value)}</b></span>`).join("")}
            ${speakerButton(
-             [item.verb.base, sayForm(item.verb, "past"), sayForm(item.verb, "participle")].join(". "),
-             "las tres formas",
+             trioEntries.map((entry) => entry.text).join(". "),
+             trioEntries.length > 2 ? "las tres formas" : "las dos formas",
              "",
-             [clipOf(item.verb, "base"), clipOf(item.verb, "past"), clipOf(item.verb, "participle")]
+             trioEntries
            )}
          </div>
          ${round.mode === "quiz" ? "" : `<p class="feedback__meaning">Significa: <b>${esc(item.verb.es)}</b></p>`}
@@ -1529,7 +1717,7 @@ function renderRound() {
 
   view.innerHTML = `
     <div class="round-top">
-      <span class="chip chip--mode">${MODES[round.mode].icon} ${MODES[round.mode].name}</span>
+      <span class="chip chip--mode">${MODES[round.mode].icon} ${MODES[round.mode].name} · ${currentLevel().name}</span>
       <span class="chip">Pregunta ${round.index + 1} de ${round.items.length}</span>
       <span class="round-top__spacer"></span>
       <span class="stat" title="Aciertos seguidos">🔥 <b>${round.streak}</b></span>
@@ -1572,7 +1760,11 @@ function renderResult() {
                ${misses
                  .map((base) => {
                    const verb = VERBS.find((candidate) => candidate.base === base);
-                   return `<button data-action="speak" data-say="${esc(`${verb.base}. ${verb.base}, ${verb.past}, ${verb.participle}.`)}" data-clips='${esc(JSON.stringify([clipOf(verb, "base"), clipOf(verb, "past"), clipOf(verb, "participle")]))}'>🔊 <span lang="en">${esc(base)}</span></button>`;
+                   const entries = formEntries(verb);
+                   const say = esc(entries.map((entry) => entry.text).join(". "));
+                   const clips = esc(JSON.stringify(entries.map((entry) => entry.clip)));
+                   const texts = esc(JSON.stringify(entries.map((entry) => entry.text)));
+                   return `<button data-action="speak" data-say="${say}" data-clips='${clips}' data-clip-texts='${texts}'>🔊 <span lang="en">${esc(base)}</span></button>`;
                  })
                  .join("")}
              </div>
@@ -1605,7 +1797,7 @@ function speakCurrentIfNeeded() {
   if (!round) return;
   const item = round.items[round.index];
   if (!item) return;
-  if (round.mode === "listen" && !round.answered) Player.say([clipOf(item.verb, item.form)], item.heard);
+  if (round.mode === "listen" && !round.answered) Player.say([clipEntry(item.verb, item.form)], item.heard);
 }
 
 function answer(optionIndex) {
@@ -1675,15 +1867,25 @@ document.addEventListener("click", (event) => {
   if (action === "home") { go("home"); return; }
   if (action === "study") { go("study"); return; }
   if (action === "play") { go(trigger.dataset.mode); return; }
+  if (action === "set-level") { setLevel(Number(trigger.dataset.level)); return; }
 
   if (action === "speak") {
     let clips = [];
+    let texts = [];
     try {
       clips = JSON.parse(trigger.dataset.clips || "[]");
     } catch {
       clips = [];
     }
-    Player.say(clips, trigger.dataset.say);
+    try {
+      texts = JSON.parse(trigger.dataset.clipTexts || "[]");
+    } catch {
+      texts = [];
+    }
+    Player.say(
+      clips.map((clip, i) => ({ clip, text: texts[i] || trigger.dataset.say })),
+      trigger.dataset.say
+    );
     return;
   }
 
@@ -1693,7 +1895,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (action === "study-next") {
-    state.study.index = Math.min(VERBS.length - 1, state.study.index + 1);
+    state.study.index = Math.min(verbsOfLevel().length - 1, state.study.index + 1);
     renderStudy();
     return;
   }
@@ -1738,7 +1940,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (state.view === "study") {
-    if (event.key === "ArrowRight") { state.study.index = Math.min(VERBS.length - 1, state.study.index + 1); renderStudy(); }
+    if (event.key === "ArrowRight") { state.study.index = Math.min(verbsOfLevel().length - 1, state.study.index + 1); renderStudy(); }
     if (event.key === "ArrowLeft") { state.study.index = Math.max(0, state.study.index - 1); renderStudy(); }
   }
 });
