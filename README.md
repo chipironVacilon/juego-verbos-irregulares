@@ -74,7 +74,8 @@ Sonia (la usada), Libby, Maisie, Ryan, Thomas.
 | Archivo | Qué es |
 | --- | --- |
 | `index.html` | El juego completo: pantallas, estilos y lógica (incluida la pantalla y el marcador del arcade). |
-| `arcade.js` | El motor del arcade: laberinto, marcianito, monstruos, movimiento por casillas y dibujo en el lienzo. |
+| `arcade.js` | La simulación del arcade (laberinto, marcianito, monstruos, movimiento por casillas, puntuación de casillas) y su capa de dibujo y efectos sobre LittleJS. |
+| `vendor/littlejs.min.js` | El motor LittleJS 1.31.0, vendorizado (MIT, ~570 KB). Se carga con un `<script src>` normal, sin módulos ni compilación. |
 | `verbs.js` | Los 61 verbos con sus dos frases de ejemplo y su traducción. |
 | `assets/audio/` | Las grabaciones en inglés (305 ficheros MP3, ~2 MB en total): 3 formas y 2 frases por verbo. |
 | `package.json` | Dependencia de los scripts (`msedge-tts`); `npm install` una sola vez. |
@@ -103,6 +104,25 @@ node scripts/play-test.mjs            # añade --shots /tmp/capturas para ver im
 
 `play-test.mjs` usa Chromium en modo headless (busca `chromium` en el sistema o
 la ruta de `CHROME_PATH`).
+
+## El motor del arcade
+
+El arcade corre sobre [LittleJS](https://github.com/KilledByAPixel/LittleJS) 1.31.0
+(MIT), copiado en `vendor/littlejs.min.js` con su licencia al lado. Se eligió por
+encajar con la promesa del juego: es un `<script src>` clásico, no necesita
+compilación ni servidor, y funciona abriendo `index.html` con doble clic.
+
+- **Qué pone el motor**: el lienzo y el bucle a 60 Hz fijos, las partículas, los
+tweens, la vibración de cámara y el reloj de la animación.
+- **Qué sigue siendo nuestro**: toda la simulación (`arcade.js` hasta
+`function drawWorld`) es JavaScript puro sin reloj, así que se puede probar en Node;
+y el dibujo del laberinto es procedural (`drawRect`, `drawPoly`, `drawEllipse`) porque
+un navegador no deja cargar imágenes de sprites desde el disco al abrir el fichero.
+- **Qué no se usa**: el audio de LittleJS. El juego ya tiene `Sfx`, osciladores
+WebAudio sin archivos, y dos motores de audio serían un problema, no una mejora.
+
+Si algún día se actualiza el motor, basta con reemplazar el fichero de `vendor/`:
+no hay ninguna API del juego en juego más que la que usa `arcade.js`.
 
 ## Notas
 
