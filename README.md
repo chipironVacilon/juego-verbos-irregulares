@@ -28,6 +28,16 @@ con doble clic.
   el poder se acaba). La partida termina cuando un monstruo te alcanza. El récord
   del arcade se guarda en el navegador.
 
+En un móvil o una tableta el arcade se juega **a pantalla completa y con el dedo**.
+Al entrar desde el inicio el juego ocupa toda la pantalla (la barra de arriba y el
+pie de página desaparecen) y pide al navegador su modo pantalla completa cuando lo
+tiene. Se controla de dos maneras: deslizando el dedo sobre el laberinto en la
+dirección que se quiere tomar, o tocando las cuatro flechas grandes que aparecen
+debajo. Un toque basta por giro, porque el marcianito sigue andando en la
+dirección marcada hasta chocar con una pared. El botón **⤢ Pantalla completa**
+entra y sale de ese modo también en el ordenador, y en el móvil sirve para volver
+a la página normal al terminar.
+
 Cada ronda son 10 preguntas. Se ganan estrellas, se cuenta la racha y el progreso
 se guarda en el propio navegador (`localStorage`). Los verbos que falla aparecen
 más a menudo en las siguientes rondas, con un tope: un par de verbos flojos no
@@ -37,7 +47,8 @@ deja el perfil como recién instalado (estrellas, racha, récords, estadísticas
 nivel).
 
 Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta. El
-arcade se juega con las flechas (`←` `↑` `→` `↓`).
+arcade se juega con las flechas (`←` `↑` `→` `↓`), con las flechas táctiles de la
+pantalla o deslizando el dedo por el laberinto.
 
 ## Niveles
 

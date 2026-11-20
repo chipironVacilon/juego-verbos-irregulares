@@ -1247,6 +1247,199 @@ check(
 await evaluate("document.querySelector('[data-action=home]').click()");
 await waitFor("!!document.querySelector('.mode')", "inicio después del arcade");
 
+/* ------------------------------------ móvil: pantalla completa y táctil ---- */
+
+/** One finger, the way the browser sees it: a real touch from outside. */
+const touchPoints = (x, y) => [{ x, y, radiusX: 8, radiusY: 8, force: 1 }];
+
+const tapAt = async (x, y) => {
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touchPoints(x, y) });
+  await sleep(40);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(120);
+};
+
+const swipe = async (from, to) => {
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touchPoints(from.x, from.y) });
+  await sleep(40);
+  await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: touchPoints(to.x, to.y) });
+  await sleep(40);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(140);
+};
+
+/** What the phone shows: the page around the maze and the touch controls. */
+const phoneLayout = () =>
+  evaluate(`(() => {
+    const box = (node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const shown = (selector) => {
+      const node = document.querySelector(selector);
+      return node ? getComputedStyle(node).display !== 'none' : null;
+    };
+    const stage = document.querySelector('.arcade__stage');
+    const canvas = document.querySelector('.arcade__canvas');
+    const pad = document.querySelector('.arcade__pad');
+    const toggle = document.querySelector('[data-action=arcade-fullscreen]');
+    return JSON.stringify({
+      viewport: { width: innerWidth, height: innerHeight },
+      scrollY: window.scrollY,
+      fullscreen: document.body.classList.contains('arcade-fullscreen'),
+      topbar: shown('.topbar'),
+      footnote: shown('.footnote'),
+      overflow: getComputedStyle(document.body).overflow,
+      padShown: pad ? getComputedStyle(pad).display !== 'none' : false,
+      pad: pad ? box(pad) : null,
+      keys: [...document.querySelectorAll('[data-arcade-dir]')].map((node) => ({
+        dir: node.dataset.arcadeDir,
+        ...box(node)
+      })),
+      stage: stage ? { ...box(stage), touchAction: getComputedStyle(stage).touchAction } : null,
+      canvas: canvas ? { ...box(canvas), ratio: canvas.getBoundingClientRect().width / canvas.getBoundingClientRect().height } : null,
+      hint: (document.querySelector('.arcade__hint') || {}).textContent || '',
+      toggle: !!toggle,
+      pressed: toggle ? toggle.getAttribute('aria-pressed') : null,
+      desired: IVG.arcade ? IVG.arcade.game.player.desired : null
+    });
+  })()`);
+
+// A real phone: narrow, tall and touch-only. The arcade has to own the screen
+// and read fingers instead of arrow keys.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+await send("Page.reload");
+await waitFor("!!window.IVG && !!document.querySelector('.mode')", "el juego arranca en un móvil");
+await evaluate("document.querySelector('[data-mode=arcade]').click()");
+await waitFor("!!IVG.arcade && IVG.state.view === 'arcade'", "el arcade arranca en el móvil");
+await waitFor("IVG.arcade.started === true", "cuenta atrás del arcade en el móvil");
+// No monsters here either: this test is about the screen and the fingers.
+await evaluate("IVG.arcade.game.monsters.length = 0");
+
+const phone = JSON.parse(await phoneLayout());
+check(phone.fullscreen, "en el móvil el arcade se abre a pantalla completa", JSON.stringify(phone.fullscreen));
+check(
+  phone.topbar === false && phone.footnote === false,
+  "a pantalla completa se esconde el resto de la página",
+  `barra ${phone.topbar}, pie ${phone.footnote}`
+);
+check(phone.overflow === "hidden", "la página no se desplaza mientras se juega", phone.overflow);
+check(
+  phone.stage && phone.stage.width >= phone.viewport.width - 40,
+  "el laberinto ocupa todo el ancho del móvil",
+  `${phone.stage && Math.round(phone.stage.width)} de ${phone.viewport.width}`
+);
+check(
+  phone.canvas &&
+    phone.canvas.width >= 320 &&
+    phone.canvas.y >= 0 &&
+    phone.canvas.y + phone.canvas.height <= phone.viewport.height + 1,
+  "el laberinto cabe entero en la pantalla",
+  JSON.stringify(phone.canvas)
+);
+check(
+  phone.canvas && Math.abs(phone.canvas.ratio - 21 / 13) < 0.02,
+  "el lienzo mantiene la proporción del laberinto",
+  phone.canvas && phone.canvas.ratio.toFixed(3)
+);
+check(
+  phone.stage && phone.stage.touchAction === "none",
+  "deslizar el laberinto no arrastra la página",
+  phone.stage && phone.stage.touchAction
+);
+check(
+  phone.padShown && phone.keys.length === 4,
+  "el móvil ofrece cuatro flechas táctiles",
+  `${phone.keys.length} flechas, visibles ${phone.padShown}`
+);
+check(
+  phone.keys.length === 4 && phone.keys.every((key) => key.width >= 48 && key.height >= 48),
+  "las flechas táctiles son grandes para el dedo",
+  JSON.stringify(phone.keys.map((key) => [key.dir, Math.round(key.width), Math.round(key.height)]))
+);
+check(
+  phone.toggle && phone.pressed === "true",
+  "el botón de pantalla completa aparece pulsado",
+  `botón ${phone.toggle}, pulsado ${phone.pressed}`
+);
+check(/desliza|toca/i.test(phone.hint), "la pista explica cómo moverse con el dedo", phone.hint);
+await shot("11-arcade-movil");
+
+const rightKey = phone.keys.find((key) => key.dir === "right");
+if (rightKey) await tapAt(rightKey.x + rightKey.width / 2, rightKey.y + rightKey.height / 2);
+const afterTap = JSON.parse(await phoneLayout());
+check(
+  afterTap.desired === "right",
+  "tocar una flecha táctil mueve al marcianito",
+  `dirección ${afterTap.desired}`
+);
+
+const stageMiddle = phone.stage
+  ? { x: phone.stage.x + phone.stage.width / 2, y: phone.stage.y + phone.stage.height / 2 }
+  : null;
+if (stageMiddle) await swipe(stageMiddle, { x: stageMiddle.x, y: stageMiddle.y - 120 });
+const afterSwipe = JSON.parse(await phoneLayout());
+check(
+  afterSwipe.desired === "up",
+  "deslizar el dedo por el laberinto mueve al marcianito",
+  `dirección ${afterSwipe.desired}`
+);
+check(afterSwipe.scrollY === 0, "jugar con el dedo no desplaza la página", `${afterSwipe.scrollY} px`);
+
+// A phone lying sideways: the keypad turns into one row so the maze keeps room.
+await send("Emulation.setDeviceMetricsOverride", { width: 844, height: 390, deviceScaleFactor: 2, mobile: true });
+await sleep(500);
+const landscape = JSON.parse(await phoneLayout());
+check(
+  landscape.canvas &&
+    landscape.canvas.height >= 150 &&
+    Math.abs(landscape.canvas.ratio - 21 / 13) < 0.02 &&
+    landscape.canvas.y >= 0 &&
+    landscape.canvas.y + landscape.canvas.height <= landscape.viewport.height + 1,
+  "en horizontal el laberinto sigue entrando entero",
+  JSON.stringify(landscape.canvas)
+);
+const keyRows = new Set(landscape.keys.map((key) => Math.round(key.y)));
+check(
+  landscape.keys.length === 4 && keyRows.size === 1,
+  "en horizontal las flechas se colocan en una sola fila",
+  `${landscape.keys.length} flechas en ${keyRows.size} fila(s)`
+);
+await shot("12-arcade-movil-horizontal");
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await sleep(500);
+
+// The same button gives the page back, so a phone can leave the fullscreen game.
+await evaluate("document.querySelector('[data-action=arcade-fullscreen]')?.click()");
+await sleep(200);
+const restored = JSON.parse(await phoneLayout());
+check(
+  restored.fullscreen === false && restored.topbar === true,
+  "el botón devuelve la página normal",
+  `pantalla completa ${restored.fullscreen}, barra ${restored.topbar}`
+);
+check(restored.pressed === "false", "el botón avisa de que ya no hay pantalla completa", restored.pressed);
+
+// On a desktop the arcade keeps its old layout: no cut phone controls.
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio tras el arcade del móvil");
+await send("Emulation.setTouchEmulationEnabled", { enabled: false, maxTouchPoints: 1 });
+await send("Emulation.setDeviceMetricsOverride", { width: 900, height: 1250, deviceScaleFactor: 1, mobile: false });
+await send("Page.reload");
+await waitFor("!!window.IVG && !!document.querySelector('.mode')", "vuelta al escritorio");
+await evaluate("document.querySelector('[data-mode=arcade]')?.click()");
+await waitFor("IVG.arcade && IVG.arcade.started === true", "el arcade en el escritorio");
+const desktop = JSON.parse(await phoneLayout());
+check(
+  desktop.fullscreen === false,
+  "en el escritorio el arcade no ocupa la pantalla entera",
+  JSON.stringify(desktop.fullscreen)
+);
+check(desktop.padShown === false, "sin pantalla táctil no aparecen las flechas", `${desktop.padShown}`);
+await evaluate("document.querySelector('[data-action=home]').click()");
+await waitFor("!!document.querySelector('.mode')", "inicio después del arcade del móvil");
+
 /* ------------------------------------------------------ audio + keyboard ---- */
 
 await evaluate("document.querySelector('[data-action=home]').click()");

@@ -342,6 +342,8 @@
     border-radius: var(--radius);
     overflow: hidden;
     background: #070b16;
+    /* A finger on the maze steers the alien; it must never scroll the page. */
+    touch-action: none;
   }
 
   /* Countdown held over the maze before the round unlocks. */
@@ -362,7 +364,124 @@
   /* The engine sizes the canvas from canvasFixedSize, so the layout wins here. */
   .arcade__canvas { display: block; width: 100% !important; height: auto !important; }
   .arcade__hint { margin: 0; text-align: center; color: var(--muted); font-size: 0.86rem; }
-  .arcade__actions { display: flex; justify-content: center; }
+  .arcade__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  /* Four big keys, one under the thumb per direction. Hidden until the device
+     proves it has a finger: a keypad on a desktop only steals room. */
+  .arcade__pad {
+    display: none;
+    grid-template-areas: ". up ." "left . right" ". down .";
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-inline: auto;
+    width: min(100%, 240px);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  body.is-touch .arcade__pad { display: grid; }
+
+  @media (any-pointer: coarse) {
+    .arcade__pad { display: grid; }
+  }
+
+  .arcade__key {
+    display: grid;
+    place-items: center;
+    min-height: 56px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card-strong);
+    color: var(--ink);
+    font-size: 1.3rem;
+    line-height: 1;
+    touch-action: none;
+    cursor: pointer;
+    transition: transform 0.08s ease, background 0.15s ease;
+  }
+
+  .arcade__key:active { background: rgba(244, 114, 182, 0.3); transform: scale(0.96); }
+  .arcade__key--up { grid-area: up; }
+  .arcade__key--left { grid-area: left; }
+  .arcade__key--right { grid-area: right; }
+  .arcade__key--down { grid-area: down; }
+
+  /* ---- Arcade a pantalla completa ----
+     The class is the fullscreen mode: a browser that refuses the real
+     fullscreen API (or a phone that has none) still gets a screen where the
+     maze is the only thing on it. */
+  body.arcade-fullscreen { position: fixed; inset: 0; overflow: hidden; }
+  body.arcade-fullscreen .topbar,
+  body.arcade-fullscreen .footnote { display: none; }
+
+  body.arcade-fullscreen .app {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    padding:
+      max(6px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+
+  body.arcade-fullscreen .view { flex: 1 1 auto; min-height: 0; }
+
+  body.arcade-fullscreen .arcade {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+  }
+
+  body.arcade-fullscreen .arcade__hud { flex: 0 0 auto; gap: 8px; }
+  body.arcade-fullscreen .arcade__target { flex: 1 1 auto; padding: 4px 12px; }
+  body.arcade-fullscreen .arcade__verb { font-size: 1.35rem; }
+  body.arcade-fullscreen .arcade__score { min-width: 64px; padding: 4px 12px; }
+  body.arcade-fullscreen .arcade__score b { font-size: 1.2rem; }
+  body.arcade-fullscreen .arcade__hint { display: none; }
+  body.arcade-fullscreen .arcade__actions { flex: 0 0 auto; }
+
+  /* The canvas is sized in JS to the biggest 21:13 box that fits here. */
+  body.arcade-fullscreen .arcade__stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  /* The engine writes its own inline size on the canvas, so the fit below wins
+     through a stylesheet rule: important declarations beat inline ones. */
+  body.arcade-fullscreen .arcade__canvas {
+    width: var(--arcade-canvas-width, 100%) !important;
+    height: var(--arcade-canvas-height, auto) !important;
+  }
+
+  body.arcade-fullscreen .arcade__over { flex: 1 1 auto; place-content: center; }
+
+  /* A phone lying sideways has almost no height: the keypad becomes one row so
+     the maze keeps the space instead of the buttons. */
+  @media (orientation: landscape) and (max-height: 560px) {
+    body.arcade-fullscreen .arcade__pad {
+      grid-template-areas: "left up down right";
+      grid-template-columns: repeat(4, 1fr);
+      width: min(100%, 320px);
+    }
+    body.arcade-fullscreen .arcade__key { min-height: 48px; }
+    body.arcade-fullscreen .arcade__actions .btn { padding: 6px 14px; font-size: 0.82rem; }
+  }
 
   .arcade__over {
     display: grid;
@@ -2075,10 +2194,13 @@ function startArcade() {
     countdown: ARCADE_COUNTDOWN_MS,
     count: null,
     started: false,
-    stopped: false
+    stopped: false,
+    // A phone gets the maze on its own screen: no page around it to steal room.
+    fullscreen: wantsTouchControls()
   };
   state.view = "arcade";
   render();
+  setArcadeFullscreen(state.arcade.fullscreen);
 }
 
 function stopArcade() {
@@ -2087,6 +2209,67 @@ function stopArcade() {
   session.stopped = true;
   ArcadeGame.stop();
   state.arcade = null;
+  setArcadeFullscreen(false);
+}
+
+/** A finger on the screen: the maze owns it instead of the page. */
+function wantsTouchControls() {
+  const points = navigator.maxTouchPoints || 0;
+  const coarse = window.matchMedia ? window.matchMedia("(any-pointer: coarse)").matches : false;
+  return points > 0 || coarse;
+}
+
+/**
+ * Fullscreen is a layout class first and a browser request second. The class
+ * alone already puts the maze on a screen of its own, so a browser that
+ * refuses the real fullscreen API (or a phone that has none) loses nothing.
+ */
+function setArcadeFullscreen(on) {
+  const active = Boolean(on);
+  document.body.classList.toggle("arcade-fullscreen", active);
+  const toggle = view.querySelector("[data-action=arcade-fullscreen]");
+  if (toggle) toggle.setAttribute("aria-pressed", active ? "true" : "false");
+  if (state.arcade) state.arcade.fullscreen = active;
+  const root = document.documentElement;
+  try {
+    if (active && !document.fullscreenElement && root.requestFullscreen) {
+      const asked = root.requestFullscreen({ navigationUI: "hide" });
+      if (asked && asked.catch) asked.catch(() => {});
+    } else if (!active && document.fullscreenElement && document.exitFullscreen) {
+      // Deferred: replaying the arcade asks for fullscreen again right away, and
+      // a browser refuses to re-enter while it is still leaving.
+      window.setTimeout(() => {
+        if (document.body.classList.contains("arcade-fullscreen")) return;
+        const left = document.exitFullscreen();
+        if (left && left.catch) left.catch(() => {});
+      }, 0);
+    }
+  } catch (error) {
+    // Without the API the class above is already the fullscreen screen.
+  }
+  fitArcadeCanvas();
+}
+
+/**
+ * The maze keeps its own 21:13 shape, so in fullscreen the canvas takes the
+ * biggest box with that shape that fits between the HUD and the touch pad.
+ * The size travels in two custom properties instead of the width and the
+ * height: the engine reserves those two for itself and would undo the fit.
+ */
+function fitArcadeCanvas() {
+  const stage = view.querySelector(".arcade__stage");
+  const canvas = stage ? stage.querySelector(".arcade__canvas") : null;
+  if (!canvas) return;
+  if (!document.body.classList.contains("arcade-fullscreen")) {
+    canvas.style.removeProperty("--arcade-canvas-width");
+    canvas.style.removeProperty("--arcade-canvas-height");
+    return;
+  }
+  const box = stage.getBoundingClientRect();
+  if (box.width < 1 || box.height < 1) return;
+  const scale = Math.min(box.width / ArcadeGame.MAZE_W, box.height / ArcadeGame.MAZE_H);
+  canvas.style.setProperty("--arcade-canvas-width", `${Math.floor(ArcadeGame.MAZE_W * scale)}px`);
+  canvas.style.setProperty("--arcade-canvas-height", `${Math.floor(ArcadeGame.MAZE_H * scale)}px`);
 }
 
 /** Hand the stage to the engine: from here on it owns the canvas and the loop. */
@@ -2096,9 +2279,12 @@ function startArcadeStage(session) {
   ArcadeGame.start(host, session.game, (step) => {
     if (session.stopped || state.arcade !== session || state.view !== "arcade") return;
     stepArcade(session, step);
-  }).catch((error) => {
-    console.error("el motor del arcade no arranca", error);
-  });
+  })
+    // The canvas only exists once the engine booted: size it after that.
+    .then(() => fitArcadeCanvas())
+    .catch((error) => {
+      console.error("el motor del arcade no arranca", error);
+    });
 }
 
 /** Only the live values are patched, so the loop never rebuilds the DOM. */
@@ -2139,14 +2325,22 @@ function renderArcade() {
         <div class="arcade__score" title="Aciertos de esta partida">⭐ <b class="arcade__points">0</b></div>
       </div>
       <div class="arcade__stage">${session.started ? "" : `<div class="arcade__countdown" role="status" aria-live="polite"></div>`}</div>
-      <p class="arcade__hint">Muévete con las flechas del teclado y esquiva a los monstruos.</p>
+      <div class="arcade__pad" role="group" aria-label="Mover al marcianito">
+        <button class="arcade__key arcade__key--up" data-arcade-dir="up" aria-label="Arriba">▲</button>
+        <button class="arcade__key arcade__key--left" data-arcade-dir="left" aria-label="Izquierda">◀</button>
+        <button class="arcade__key arcade__key--right" data-arcade-dir="right" aria-label="Derecha">▶</button>
+        <button class="arcade__key arcade__key--down" data-arcade-dir="down" aria-label="Abajo">▼</button>
+      </div>
+      <p class="arcade__hint">Muévete con las flechas del teclado, desliza el dedo por el laberinto o toca los botones.</p>
       <div class="arcade__actions">
+        <button class="btn btn--ghost" data-action="arcade-fullscreen" aria-pressed="${session.fullscreen ? "true" : "false"}">⤢ Pantalla completa</button>
         <button class="btn btn--ghost" data-action="home">Salir al inicio</button>
       </div>
     </div>`;
   paintArcadeHud(session);
   if (!session.started) paintArcadeCountdown(session);
   startArcadeStage(session);
+  fitArcadeCanvas();
 }
 
 function renderArcadeOver() {
@@ -2339,6 +2533,10 @@ document.addEventListener("click", (event) => {
   if (action === "reset-progress-confirm") { resetProgress(); return; }
   if (action === "study") { go("study"); return; }
   if (action === "play") { go(trigger.dataset.mode); return; }
+  if (action === "arcade-fullscreen") {
+    setArcadeFullscreen(!document.body.classList.contains("arcade-fullscreen"));
+    return;
+  }
   if (action === "set-level") { setLevel(Number(trigger.dataset.level)); return; }
 
   if (action === "speak") {
@@ -2434,6 +2632,84 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") { state.study.index = Math.max(0, state.study.index - 1); renderStudy(); }
   }
 });
+
+/* =========================================================================
+   Fingers on the arcade
+   ========================================================================= */
+
+/** One touch is one turn: the alien keeps walking until a wall stops it. */
+function arcadeSteer(direction) {
+  if (state.view !== "arcade" || !state.arcade || state.arcade.stopped) return;
+  ArcadeGame.setDirection(state.arcade.game, direction);
+}
+
+/** Shorter than this the finger did not mean a direction, it meant a tap. */
+const ARCADE_SWIPE_PX = 24;
+
+function swipeDirection(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < ARCADE_SWIPE_PX) return null;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "right" : "left";
+  return dy > 0 ? "down" : "up";
+}
+
+/** The drag in progress, or null: one finger, one direction. */
+let arcadeSwipe = null;
+
+view.addEventListener("pointerdown", (event) => {
+  if (state.view !== "arcade" || !state.arcade) return;
+  // A real finger also reveals the keypad on a laptop with a touchscreen.
+  if (event.pointerType === "touch") document.body.classList.add("is-touch");
+
+  const key = event.target instanceof Element ? event.target.closest("[data-arcade-dir]") : null;
+  if (key) {
+    event.preventDefault();
+    arcadeSteer(key.dataset.arcadeDir);
+    return;
+  }
+
+  const stage = event.target instanceof Element ? event.target.closest(".arcade__stage") : null;
+  if (!stage) return;
+  event.preventDefault();
+  arcadeSwipe = { x: event.clientX, y: event.clientY, steered: false };
+});
+
+view.addEventListener("pointermove", (event) => {
+  if (!arcadeSwipe || arcadeSwipe.steered) return;
+  const direction = swipeDirection(arcadeSwipe, { x: event.clientX, y: event.clientY });
+  if (!direction) return;
+  // Turn as soon as the finger commits, without waiting for it to lift.
+  arcadeSwipe.steered = true;
+  arcadeSteer(direction);
+});
+
+view.addEventListener("pointerup", (event) => {
+  if (!arcadeSwipe) return;
+  const direction = arcadeSwipe.steered
+    ? null
+    : swipeDirection(arcadeSwipe, { x: event.clientX, y: event.clientY });
+  arcadeSwipe = null;
+  if (direction) arcadeSteer(direction);
+});
+
+view.addEventListener("pointercancel", () => { arcadeSwipe = null; });
+
+/* Leaving the browser's fullscreen with Escape leaves the layout with it. */
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) {
+    // A real fullscreen has a bigger viewport: the maze has room to grow.
+    fitArcadeCanvas();
+    return;
+  }
+  if (document.body.classList.contains("arcade-fullscreen")) setArcadeFullscreen(false);
+});
+
+/* A phone turned sideways gets a different box for the maze. */
+window.addEventListener("resize", () => fitArcadeCanvas());
+window.addEventListener("orientationchange", () => window.setTimeout(fitArcadeCanvas, 150));
+
+document.body.classList.toggle("is-touch", wantsTouchControls());
 
 /* =========================================================================
    Boot
