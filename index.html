@@ -21,6 +21,7 @@
     --quiz: #8b7cff;
     --gaps: #22d3ee;
     --listen: #ffb347;
+    --arcade: #f472b6;
     --radius: 20px;
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.9);
   }
@@ -282,6 +283,70 @@
   .mode--quiz { --accent: var(--quiz); }
   .mode--gaps { --accent: var(--gaps); }
   .mode--listen { --accent: var(--listen); }
+  .mode--arcade { --accent: var(--arcade); }
+
+  /* ---- Arcade (maze mini-game) ---- */
+  .arcade { display: grid; gap: 14px; }
+
+  .arcade__hud { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; }
+
+  .arcade__target {
+    display: grid;
+    gap: 2px;
+    flex: 1 1 180px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--card);
+  }
+
+  .arcade__label {
+    font-size: 0.7rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .arcade__verb { font-size: 1.85rem; line-height: 1.05; }
+
+  .arcade__score {
+    display: grid;
+    place-items: center;
+    gap: 2px;
+    min-width: 84px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--card);
+    font-weight: 800;
+  }
+
+  .arcade__score b { font-size: 1.55rem; line-height: 1; color: var(--gold); }
+
+  .arcade__stage {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: #070b16;
+  }
+
+  .arcade__canvas { display: block; width: 100%; height: auto; }
+  .arcade__hint { margin: 0; text-align: center; color: var(--muted); font-size: 0.86rem; }
+  .arcade__actions { display: flex; justify-content: center; }
+
+  .arcade__over {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    padding: 20px 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+
+  .arcade__over h2 { font-size: 1.4rem; }
+  .arcade__over p { margin: 0; color: var(--muted); }
+  .arcade__over b { color: var(--gold); font-size: 1.2rem; }
 
   .progress-card { padding: 16px 18px; }
 
@@ -772,6 +837,7 @@
 <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
 
 <script src="verbs.js"></script>
+<script src="arcade.js"></script>
 <script>
 "use strict";
 
@@ -809,7 +875,7 @@ function sayForm(verb, form) {
 const STORAGE_KEY = "verbos-irregulares-v1";
 // Level 2 is the whole game, so a profile saved before levels existed keeps
 // playing exactly what it used to.
-const EMPTY_PROFILE = { level: 2, stars: 0, bestStreak: 0, rounds: 0, verbs: {} };
+const EMPTY_PROFILE = { level: 2, stars: 0, bestStreak: 0, rounds: 0, verbs: {}, arcadeBest: 0 };
 
 function loadProfile() {
   try {
@@ -821,6 +887,7 @@ function loadProfile() {
       stars: Number(parsed.stars) || 0,
       bestStreak: Number(parsed.bestStreak) || 0,
       rounds: Number(parsed.rounds) || 0,
+      arcadeBest: Number(parsed.arcadeBest) || 0,
       verbs: parsed.verbs && typeof parsed.verbs === "object" ? parsed.verbs : {}
     };
   } catch (error) {
@@ -1284,7 +1351,8 @@ const MODES = {
   study: { name: "Tarjetas", icon: "🃏", accent: "var(--study)" },
   quiz: { name: "Quiz", icon: "⚡", accent: "var(--quiz)" },
   gaps: { name: "Frases", icon: "✏️", accent: "var(--gaps)" },
-  listen: { name: "Escucha", icon: "🎧", accent: "var(--listen)" }
+  listen: { name: "Escucha", icon: "🎧", accent: "var(--listen)" },
+  arcade: { name: "Arcade", icon: "👾", accent: "var(--arcade)" }
 };
 
 /* =========================================================================
@@ -1466,13 +1534,20 @@ const state = {
   view: "home",
   round: null,
   study: { index: 0, filter: "" },
-  lastRound: null
+  lastRound: null,
+  arcade: null
 };
 
 const view = document.getElementById("view");
 
 function go(target) {
   stopConfetti();
+  stopArcade();
+  if (target === "arcade") {
+    startArcade();
+    if (location.hash.slice(1) !== target) location.hash = `#${target}`;
+    return;
+  }
   if (target === "home") {
     state.round = null;
     state.view = "home";
@@ -1490,6 +1565,7 @@ function go(target) {
 window.addEventListener("hashchange", () => {
   const target = location.hash.slice(1) || "home";
   if (target === "study" && state.view === "study") return;
+  if (target === "arcade" && state.view === "arcade") return;
   if (MODES[target] && state.round && state.round.mode === target) return;
   go(target);
 });
@@ -1599,6 +1675,15 @@ function renderHome() {
         <span class="mode__body">
           <b>Escucha y adivina</b>
           <small>Oirás el verbo en inglés. ¿Cuál de estos cuatro es?</small>
+        </span>
+        <span class="mode__go" aria-hidden="true">→</span>
+      </button>
+
+      <button class="mode mode--arcade" data-action="play" data-mode="arcade">
+        <span class="mode__icon" aria-hidden="true">👾</span>
+        <span class="mode__body">
+          <b>Arcade del marcianito</b>
+          <small>Mueve al marcianito por el laberinto, recoge el pasado correcto y esquiva a los monstruos.</small>
         </span>
         <span class="mode__go" aria-hidden="true">→</span>
       </button>
@@ -1832,8 +1917,235 @@ function render() {
   document.getElementById("stat-streak").textContent = profile.bestStreak;
 
   if (state.view === "play") renderRound();
+  else if (state.view === "arcade") renderArcade();
   else if (state.view === "study") renderStudy();
   else renderHome();
+}
+
+/* =========================================================================
+   Arcade (maze mini-game)
+   ========================================================================= */
+
+/* The simulation, the maze and the monsters live in arcade.js; this section
+   owns the screen, the words that sit on the board and the score. */
+const ARCADE_WORDS = 4;
+const ARCADE_KEYS = {
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right"
+};
+
+/** Verbs of the current level, weighted so the failed ones come back more. */
+function arcadeVerb() {
+  const [verb] = weightedSample(verbsOfLevel(), 1, weightOf);
+  return verb || VERBS[0];
+}
+
+/** The single-word past form the alien has to collect. */
+function arcadeAnswer(verb) {
+  return firstForm(verb.past);
+}
+
+/** Another verb of the level, so the word on top always actually changes. */
+function arcadeNextVerb(current) {
+  let verb = arcadeVerb();
+  for (let attempt = 0; attempt < 12 && current && verb.base === current.base; attempt += 1) {
+    verb = arcadeVerb();
+  }
+  return verb;
+}
+
+/**
+ * The four signs of one round: the right past form plus three look-alikes from
+ * the same level. Other forms of the same verb (was / were) never qualify as a
+ * wrong answer, or the round would have two good ones.
+ */
+function arcadeWords(target) {
+  const correct = arcadeAnswer(target);
+  const own = new Set(formsOf(target.past).map((word) => word.toLowerCase()));
+  const wrong = shuffle(
+    poolFor("past").filter(
+      (word) => !own.has(word.toLowerCase()) && word.toLowerCase() !== correct.toLowerCase()
+    )
+  ).slice(0, Math.max(1, ARCADE_WORDS - 1));
+  return shuffle(
+    [correct, ...wrong].map((text) => ({ text, correct: text.toLowerCase() === correct.toLowerCase() }))
+  );
+}
+
+function startArcade() {
+  stopConfetti();
+  stopArcade();
+  const target = arcadeVerb();
+  const game = ArcadeGame.create();
+  state.arcade = {
+    game,
+    target,
+    score: 0,
+    frame: 0,
+    last: 0,
+    stopped: false
+  };
+  ArcadeGame.placeWords(game, arcadeWords(target));
+  state.view = "arcade";
+  render();
+}
+
+function stopArcade() {
+  const session = state.arcade;
+  if (!session) return;
+  session.stopped = true;
+  if (session.frame) cancelAnimationFrame(session.frame);
+  session.frame = 0;
+  state.arcade = null;
+}
+
+/** Canvas in CSS pixels, backed by device pixels so it stays sharp. */
+function prepareArcadeCanvas(canvas, game) {
+  if (!canvas) return null;
+  const width = game.cols * game.tile;
+  const height = game.rows * game.tile;
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  canvas.style.aspectRatio = `${width} / ${height}`;
+  game.scale = scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  return ctx;
+}
+
+function arcadeSize(game) {
+  return { width: game.cols * game.tile, height: game.rows * game.tile };
+}
+
+function paintArcade(session) {
+  const { game } = session;
+  const canvas = view.querySelector(".arcade__canvas");
+  if (!canvas) return;
+  const ctx = session.ctx || prepareArcadeCanvas(canvas, game);
+  session.ctx = ctx;
+  ArcadeGame.draw(ctx, game, arcadeSize(game));
+}
+
+/** Only the live values are patched, so the loop never rebuilds the DOM. */
+function paintArcadeHud(session) {
+  const verb = view.querySelector(".arcade__verb");
+  if (verb) verb.textContent = session.target ? session.target.base : "—";
+  const points = view.querySelector(".arcade__points");
+  if (points) points.textContent = session.score;
+  const stars = document.getElementById("stat-stars");
+  if (stars) stars.textContent = profile.stars;
+}
+
+function renderArcade() {
+  const session = state.arcade;
+  if (!session) {
+    state.view = "home";
+    renderHome();
+    return;
+  }
+  session.ctx = null;
+  view.innerHTML = `
+    <div class="arcade">
+      <div class="arcade__hud">
+        <div class="arcade__target">
+          <span class="arcade__label">Pasado de</span>
+          <b class="arcade__verb" lang="en">—</b>
+        </div>
+        <div class="arcade__score" title="Aciertos de esta partida">⭐ <b class="arcade__points">0</b></div>
+      </div>
+      <div class="arcade__stage">
+        <canvas class="arcade__canvas" role="img" aria-label="Laberinto del arcade"></canvas>
+      </div>
+      <p class="arcade__hint">Muévete con las flechas del teclado y esquiva a los monstruos.</p>
+      <div class="arcade__actions">
+        <button class="btn btn--ghost" data-action="home">Salir al inicio</button>
+      </div>
+    </div>`;
+  paintArcadeHud(session);
+  paintArcade(session);
+  startArcadeLoop(session);
+}
+
+function renderArcadeOver() {
+  const session = state.arcade;
+  if (!session) return;
+  view.innerHTML = `
+    <div class="arcade">
+      <div class="arcade__hud">
+        <div class="arcade__target">
+          <span class="arcade__label">Te quedabas en</span>
+          <b class="arcade__verb" lang="en">${esc(session.target ? session.target.base : "")}</b>
+        </div>
+        <div class="arcade__score">⭐ <b>${session.score}</b></div>
+      </div>
+      <div class="arcade__over">
+        <span aria-hidden="true" style="font-size:2rem">👾</span>
+        <h2>¡Te ha pillado un monstruo!</h2>
+        <p>Has recogido <b>${session.score}</b> ${session.score === 1 ? "palabra" : "palabras"}.</p>
+        <p>Tu récord en el arcade: <b>${profile.arcadeBest}</b></p>
+        <button class="btn btn--primary" data-action="play" data-mode="arcade">Jugar otra vez 👾</button>
+        <button class="btn btn--ghost" data-action="home">Volver al inicio</button>
+      </div>
+    </div>`;
+}
+
+function startArcadeLoop(session) {
+  if (session.frame) cancelAnimationFrame(session.frame);
+  session.stopped = false;
+  session.last = 0;
+  const frame = (now) => {
+    if (session.stopped || state.arcade !== session || state.view !== "arcade") return;
+    if (!session.last) session.last = now;
+    const elapsed = now - session.last;
+    session.last = now;
+    stepArcade(session, elapsed);
+    if (session.stopped || state.view !== "arcade") return;
+    session.frame = requestAnimationFrame(frame);
+  };
+  session.frame = requestAnimationFrame(frame);
+}
+
+function stepArcade(session, elapsed) {
+  const events = ArcadeGame.tick(session.game, elapsed);
+  if (events.word) collectArcadeWord(session, events.word);
+  if (events.caught) {
+    finishArcade(session);
+    return;
+  }
+  paintArcade(session);
+}
+
+/** Walking onto a sign: the right one scores and brings a new verb along. */
+function collectArcadeWord(session, word) {
+  const { target } = session;
+  if (!word.correct) {
+    recordAnswer(target, false);
+    Sfx.wrong();
+    return;
+  }
+  session.score += 1;
+  session.target = arcadeNextVerb(target);
+  ArcadeGame.placeWords(session.game, arcadeWords(session.target));
+  recordAnswer(target, true);
+  profile.stars += 1;
+  saveProfile();
+  paintArcadeHud(session);
+  Sfx.right();
+}
+
+function finishArcade(session) {
+  session.stopped = true;
+  if (session.frame) cancelAnimationFrame(session.frame);
+  session.frame = 0;
+  paintArcade(session);
+  profile.arcadeBest = Math.max(profile.arcadeBest || 0, session.score);
+  profile.rounds += 1;
+  saveProfile();
+  renderArcadeOver();
 }
 
 /* =========================================================================
@@ -1996,6 +2308,15 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (state.view === "arcade") {
+    const direction = ARCADE_KEYS[event.key];
+    if (direction && state.arcade) {
+      ArcadeGame.setDirection(state.arcade.game, direction);
+      event.preventDefault();
+    }
+    return;
+  }
+
   if (state.view === "study") {
     if (event.key === "ArrowRight") { state.study.index = Math.min(verbsOfLevel().length - 1, state.study.index + 1); renderStudy(); }
     if (event.key === "ArrowLeft") { state.study.index = Math.max(0, state.study.index - 1); renderStudy(); }
@@ -2012,6 +2333,7 @@ window.IVG = {
   get profile() { return profile; },
   get verbs() { return VERBS; },
   get player() { return Player; },
+  get arcade() { return state.arcade; },
   reset() {
     profile = { ...EMPTY_PROFILE };
     saveProfile();
@@ -2031,7 +2353,8 @@ Player.probe(clipOf(VERBS[0], "base")).then((ok) => {
 });
 
 const initial = location.hash.slice(1);
-if (MODES[initial]) startRound(initial);
+if (initial === "arcade") startArcade();
+else if (MODES[initial]) startRound(initial);
 else if (initial === "study") { state.view = "study"; render(); }
 else render();
 </script>
