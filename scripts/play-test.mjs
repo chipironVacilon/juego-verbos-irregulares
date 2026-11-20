@@ -394,6 +394,7 @@ check(
 // A missing clip must not stall the queue: the recording behind it still plays.
 const drained = JSON.parse(
   await evaluate(`(() => new Promise((done) => {
+    const before = IVG.player.played;
     IVG.player.say([
       { clip: 'assets/audio/no-existe-2.mp3', text: 'docs' },
       { clip: 'assets/audio/be/base.mp3', text: 'be' }
@@ -401,7 +402,11 @@ const drained = JSON.parse(
     const started = Date.now();
     const poll = () => {
       if (IVG.player.pending === 0 || Date.now() - started > 8000) {
-        done(JSON.stringify({ pending: IVG.player.pending, waited: Date.now() - started }));
+        done(JSON.stringify({
+          pending: IVG.player.pending,
+          played: IVG.player.played - before,
+          waited: Date.now() - started
+        }));
         return;
       }
       setTimeout(poll, 100);
@@ -410,6 +415,7 @@ const drained = JSON.parse(
   }))()`)
 );
 check(drained.pending === 0, "un clip que falta no traba la cola de audio", JSON.stringify(drained));
+check(drained.played === 1, "y suena la grabación que venía detrás", JSON.stringify(drained));
 
 /* ------------------------------------------------------- rondas nivel 1 ---- */
 

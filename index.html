@@ -988,6 +988,7 @@ const Player = (() => {
   let runId = 0; // bumped on every stop, so a cancelled voice cannot advance us
   let speaking = false; // the browser voice is reading an entry right now
   let playing = false; // a clip element is loading or playing an entry
+  let played = 0; // clips that actually started, for tests and diagnostics
   let voiceGuard = null; // watchdog for a voice that never reports the end
   /** Clips already found broken: later rounds skip them straight to the voice. */
   const missingClips = new Set();
@@ -1093,10 +1094,16 @@ const Player = (() => {
         stop();
       }
     };
-    audio.play().catch(() => {
-      /* Autoplay policies reject playback without a user gesture; the next
-         click will play normally. The synth would be blocked too. */
-    });
+    audio
+      .play()
+      .then(() => {
+        played += 1;
+      })
+      .catch(() => {
+        /* Autoplay policies reject playback without a user gesture; the next
+           click will play normally. Nothing is in flight, so stop counting it. */
+        playing = false;
+      });
   }
 
   return {
@@ -1106,6 +1113,10 @@ const Player = (() => {
     /** Entries still in flight: queued, playing or being read by the voice. */
     get pending() {
       return queue.length + (playing ? 1 : 0) + (speaking ? 1 : 0);
+    },
+    /** Clips that really started playing in this session. */
+    get played() {
+      return played;
     },
     /** Clips known to be missing, so a later round can check them. */
     get missing() {
