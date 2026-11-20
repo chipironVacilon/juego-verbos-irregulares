@@ -563,6 +563,76 @@ const VERBS = [
       { en: "I forgot my homework at home.", es: "Me olvidé los deberes en casa.", form: "past", target: "forgot" },
       { en: "She has forgotten my name.", es: "Ha olvidado mi nombre.", form: "participle", target: "forgotten" }
     ]
+  },
+  {
+    base: "awake",
+    past: "awoke",
+    participle: "awoken",
+    es: "despertarse",
+    examples: [
+      { en: "I awoke at seven this morning.", es: "Me desperté a las siete esta mañana.", form: "past", target: "awoke" },
+      { en: "She has awoken very early.", es: "Se ha despertado muy temprano.", form: "participle", target: "awoken" }
+    ]
+  },
+  {
+    base: "beat",
+    past: "beat",
+    participle: "beaten",
+    es: "golpear, ganar",
+    examples: [
+      { en: "Our team beat theirs in the final.", es: "Nuestro equipo ganó al suyo en la final.", form: "past", target: "beat" },
+      { en: "He has beaten the record.", es: "Ha batido el récord.", form: "participle", target: "beaten" }
+    ]
+  },
+  {
+    base: "bend",
+    past: "bent",
+    participle: "bent",
+    es: "doblar",
+    examples: [
+      { en: "I bent the paper in half.", es: "Doblé el papel por la mitad.", form: "past", target: "bent" },
+      { en: "She has bent the wire.", es: "Ha doblado el alambre.", form: "participle", target: "bent" }
+    ]
+  },
+  {
+    base: "bet",
+    past: "bet",
+    participle: "bet",
+    es: "apostar",
+    examples: [
+      { en: "He bet ten euros on the horse.", es: "Apostó diez euros al caballo.", form: "past", target: "bet" },
+      { en: "We have bet on the wrong team.", es: "Hemos apostado por el equipo equivocado.", form: "participle", target: "bet" }
+    ]
+  },
+  {
+    base: "bind",
+    past: "bound",
+    participle: "bound",
+    es: "atar, encuadernar",
+    examples: [
+      { en: "She bound the books with string.", es: "Ató los libros con cuerda.", form: "past", target: "bound" },
+      { en: "They have bound the newspapers.", es: "Han encuadernado los periódicos.", form: "participle", target: "bound" }
+    ]
+  },
+  {
+    base: "bite",
+    past: "bit",
+    participle: "bitten",
+    es: "morder",
+    examples: [
+      { en: "The dog bit my shoe.", es: "El perro mordió mi zapato.", form: "past", target: "bit" },
+      { en: "It has bitten my finger.", es: "Me ha mordido el dedo.", form: "participle", target: "bitten" }
+    ]
+  },
+  {
+    base: "bleed",
+    past: "bled",
+    participle: "bled",
+    es: "sangrar",
+    examples: [
+      { en: "My knee bled a little.", es: "Mi rodilla sangró un poco.", form: "past", target: "bled" },
+      { en: "His nose has bled twice.", es: "Le ha sangrado la nariz dos veces.", form: "participle", target: "bled" }
+    ]
   }
 ];
 
