@@ -18,13 +18,23 @@ con doble clic.
 - **Arcade del marcianito**: un laberinto tipo Pac-Man. Arriba aparece un verbo en
   infinitivo y por el laberinto hay cuatro palabras: con las flechas del teclado se
   mueve al marcianito para recoger la que es su **pasado**, esquivando a los
-  monstruos. Cada acierto suma un punto, da una estrella y cambia el verbo; la
-  partida termina cuando un monstruo te alcanza. El récord del arcade se guarda en
-  el navegador.
+  monstruos. Cada partida empieza con una cuenta atrás de tres segundos que pita
+  una vez por segundo: el laberinto se ve pero está congelado y todavía sin
+  palabras, y justo al terminar aparece el verbo de arriba y se pronuncia una
+  vez. Cada acierto suma un punto, da una estrella y cambia el verbo: al recoger
+  el pasado correcto se oye su audio y, acto seguido, el del verbo que aparece
+  después. Además abre **cinco segundos de poder**: los monstruos se vuelven
+  azules, huyen del marcianito y se los puede comer (vuelven a su esquina cuando
+  el poder se acaba). La partida termina cuando un monstruo te alcanza. El récord
+  del arcade se guarda en el navegador.
 
 Cada ronda son 10 preguntas. Se ganan estrellas, se cuenta la racha y el progreso
 se guarda en el propio navegador (`localStorage`). Los verbos que falla aparecen
-más a menudo en las siguientes rondas.
+más a menudo en las siguientes rondas, con un tope: un par de verbos flojos no
+pueden acaparar la partida. En el arcade, además, nunca vuelven los cuatro verbos
+que acabas de ver. En el inicio, el botón **Borrar progreso** pide confirmación y
+deja el perfil como recién instalado (estrellas, racha, récords, estadísticas y
+nivel).
 
 Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta. El
 arcade se juega con las flechas (`←` `↑` `→` `↓`).

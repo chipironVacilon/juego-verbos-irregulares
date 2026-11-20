@@ -154,6 +154,19 @@
 
   .btn--ghost { background: transparent; }
 
+  /* Wiping the profile is destructive: it is styled as such and always asks. */
+  .btn--danger {
+    border-color: rgba(251, 113, 133, 0.55);
+    background: rgba(251, 113, 133, 0.14);
+    color: #fecdd3;
+  }
+
+  .btn--danger:hover { background: rgba(251, 113, 133, 0.24); }
+
+  .reset { display: grid; gap: 10px; margin-top: 12px; }
+  .reset__warning { margin: 0; color: var(--muted); font-size: 0.9rem; }
+  .reset__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
   .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
   .speak {
@@ -324,10 +337,26 @@
   .arcade__score b { font-size: 1.55rem; line-height: 1; color: var(--gold); }
 
   .arcade__stage {
+    position: relative;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     overflow: hidden;
     background: #070b16;
+  }
+
+  /* Countdown held over the maze before the round unlocks. */
+  .arcade__countdown {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(7, 11, 22, 0.62);
+    color: var(--arcade);
+    font-size: clamp(3.4rem, 13vw, 5.4rem);
+    font-weight: 800;
+    line-height: 1;
+    text-shadow: 0 0 26px rgba(244, 114, 182, 0.6);
+    pointer-events: none;
   }
 
   /* The engine sizes the canvas from canvasFixedSize, so the layout wins here. */
@@ -1282,6 +1311,10 @@ const Sfx = (() => {
   return {
     right() { tone(784, 0, 0.12, "sine", 0.12); tone(1175, 0.09, 0.16, "sine", 0.1); },
     wrong() { tone(196, 0, 0.18, "triangle", 0.1); tone(147, 0.1, 0.22, "triangle", 0.08); },
+    /** One blip of the arcade countdown: short, square and unmistakable. */
+    tick() { tone(880, 0, 0.09, "square", 0.06); },
+    /** Biting a ghost that can no longer bite back. */
+    chomp() { tone(392, 0, 0.08, "square", 0.09); tone(262, 0.07, 0.13, "square", 0.08); },
     finish() { [523, 659, 784, 1047].forEach((note, i) => tone(note, i * 0.11, 0.22, "sine", 0.09)); }
   };
 })();
@@ -1537,7 +1570,8 @@ const state = {
   round: null,
   study: { index: 0, filter: "" },
   lastRound: null,
-  arcade: null
+  arcade: null,
+  confirmingReset: false
 };
 
 const view = document.getElementById("view");
@@ -1545,6 +1579,7 @@ const view = document.getElementById("view");
 function go(target) {
   stopConfetti();
   stopArcade();
+  state.confirmingReset = false;
   if (target === "arcade") {
     startArcade();
     if (location.hash.slice(1) !== target) location.hash = `#${target}`;
@@ -1571,6 +1606,39 @@ window.addEventListener("hashchange", () => {
   if (MODES[target] && state.round && state.round.mode === target) return;
   go(target);
 });
+
+/* =========================================================================
+   Borrar el progreso
+   ========================================================================= */
+
+/**
+ * The wipe cannot be undone, so the first click only asks: the profile stays
+ * untouched until the player confirms.
+ */
+function resetPanel() {
+  if (!state.confirmingReset) {
+    return `<button class="btn btn--ghost" data-action="reset-progress">Borrar progreso</button>`;
+  }
+  return `
+    <div class="reset">
+      <p class="reset__warning">Se borran las estrellas, la racha, los récords, las estadísticas de los verbos y la partida guardada. No se puede deshacer.</p>
+      <div class="reset__actions">
+        <button class="btn btn--danger" data-action="reset-progress-confirm">Sí, borrar todo</button>
+        <button class="btn btn--ghost" data-action="reset-progress-cancel">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+/** Wipe the profile in memory and in the browser, then redraw the home screen. */
+function resetProgress() {
+  // A fresh `verbs` map: EMPTY_PROFILE is shared and the stats are written into it.
+  profile = { ...EMPTY_PROFILE, verbs: {} };
+  saveProfile();
+  state.confirmingReset = false;
+  state.study = { index: 0, filter: "" };
+  state.lastRound = null;
+  go("home");
+}
 
 /* =========================================================================
    Views
@@ -1695,6 +1763,7 @@ function renderHome() {
       <h2>Tu progreso en el ${level.name.toLowerCase()}</h2>
       <div class="bar"><span style="width:${percent}%"></span></div>
       <p>${practiced} de ${verbs.length} verbos practicados · ${profile.rounds} rondas jugadas · mejor racha: ${profile.bestStreak}</p>
+      ${resetPanel()}
     </section>`;
 }
 
@@ -1931,6 +2000,12 @@ function render() {
 /* The simulation, the maze and the monsters live in arcade.js; this section
    owns the screen, the words that sit on the board and the score. */
 const ARCADE_WORDS = 4;
+/** Verbs of the last words that never come back, so the level keeps rotating. */
+const ARCADE_MEMORY = 4;
+/** Ceiling for the "failed verbs come back" boost inside the maze. */
+const ARCADE_MAX_WEIGHT = 3;
+/** Breathing room before a round: the maze shows, but nothing moves yet. */
+const ARCADE_COUNTDOWN_MS = 3000;
 const ARCADE_KEYS = {
   ArrowUp: "up",
   ArrowDown: "down",
@@ -1938,9 +2013,18 @@ const ARCADE_KEYS = {
   ArrowRight: "right"
 };
 
-/** Verbs of the current level, weighted so the failed ones come back more. */
-function arcadeVerb() {
-  const [verb] = weightedSample(verbsOfLevel(), 1, weightOf);
+/**
+ * One verb of the level. Failed verbs are more likely to come back, but the
+ * boost is capped and the ones just played are skipped: a couple of hard verbs
+ * must never take the maze over.
+ */
+function arcadeVerb(avoid = []) {
+  const level = verbsOfLevel();
+  const fresh = level.filter((verb) => !avoid.includes(verb.base));
+  const pool = fresh.length > 0 ? fresh : level;
+  const [verb] = weightedSample(pool, 1, (candidate) =>
+    Math.min(ARCADE_MAX_WEIGHT, weightOf(candidate))
+  );
   return verb || VERBS[0];
 }
 
@@ -1949,12 +2033,11 @@ function arcadeAnswer(verb) {
   return firstForm(verb.past);
 }
 
-/** Another verb of the level, so the word on top always actually changes. */
-function arcadeNextVerb(current) {
-  let verb = arcadeVerb();
-  for (let attempt = 0; attempt < 12 && current && verb.base === current.base; attempt += 1) {
-    verb = arcadeVerb();
-  }
+/** The next verb of the round: neither the current one nor the last few. */
+function arcadeNextVerb(session) {
+  const avoid = session.recent.slice(0, ARCADE_MEMORY);
+  const verb = arcadeVerb(avoid);
+  session.recent = [verb.base, ...avoid].slice(0, ARCADE_MEMORY);
   return verb;
 }
 
@@ -1984,12 +2067,16 @@ function startArcade() {
   state.arcade = {
     game,
     target,
+    // The verbs already shown, newest first: the maze refuses to repeat them.
+    recent: [target.base],
     score: 0,
-    frame: 0,
-    last: 0,
+    // Until the countdown reaches zero there are no words on the board and no
+    // verb on top, so the round never starts behind the player's back.
+    countdown: ARCADE_COUNTDOWN_MS,
+    count: null,
+    started: false,
     stopped: false
   };
-  ArcadeGame.placeWords(game, arcadeWords(target));
   state.view = "arcade";
   render();
 }
@@ -2017,11 +2104,22 @@ function startArcadeStage(session) {
 /** Only the live values are patched, so the loop never rebuilds the DOM. */
 function paintArcadeHud(session) {
   const verb = view.querySelector(".arcade__verb");
-  if (verb) verb.textContent = session.target ? session.target.base : "—";
+  if (verb) verb.textContent = session.started && session.target ? session.target.base : "—";
   const points = view.querySelector(".arcade__points");
   if (points) points.textContent = session.score;
   const stars = document.getElementById("stat-stars");
   if (stars) stars.textContent = profile.stars;
+}
+
+/** The seconds left on the overlay, repainted (and beeped) only on a new number. */
+function paintArcadeCountdown(session) {
+  const overlay = view.querySelector(".arcade__countdown");
+  if (!overlay) return;
+  const left = Math.max(1, Math.ceil(session.countdown / 1000));
+  if (left === session.count) return;
+  session.count = left;
+  overlay.textContent = String(left);
+  Sfx.tick();
 }
 
 function renderArcade() {
@@ -2040,13 +2138,14 @@ function renderArcade() {
         </div>
         <div class="arcade__score" title="Aciertos de esta partida">⭐ <b class="arcade__points">0</b></div>
       </div>
-      <div class="arcade__stage"></div>
+      <div class="arcade__stage">${session.started ? "" : `<div class="arcade__countdown" role="status" aria-live="polite"></div>`}</div>
       <p class="arcade__hint">Muévete con las flechas del teclado y esquiva a los monstruos.</p>
       <div class="arcade__actions">
         <button class="btn btn--ghost" data-action="home">Salir al inicio</button>
       </div>
     </div>`;
   paintArcadeHud(session);
+  if (!session.started) paintArcadeCountdown(session);
   startArcadeStage(session);
 }
 
@@ -2076,9 +2175,37 @@ function renderArcadeOver() {
 /** One fixed engine frame: the simulation advances, the engine paints. */
 function stepArcade(session, elapsed) {
   if (session.stopped) return;
+  // While the countdown runs the engine keeps painting, but the maze is frozen.
+  if (!session.started) {
+    countdownArcade(session, elapsed);
+    return;
+  }
   const events = ArcadeGame.tick(session.game, elapsed);
   if (events.word) collectArcadeWord(session, events.word);
+  if (events.eaten) eatArcadeMonster(events.eaten);
   if (events.caught) finishArcade(session);
+}
+
+/** Held round: only the countdown clock moves, never the alien or the monsters. */
+function countdownArcade(session, elapsed) {
+  session.countdown -= elapsed;
+  if (session.countdown > 0) {
+    paintArcadeCountdown(session);
+    return;
+  }
+  beginArcadeRound(session);
+}
+
+/** Countdown over: the verb goes up, its clip plays once and the maze unlocks. */
+function beginArcadeRound(session) {
+  session.countdown = 0;
+  session.started = true;
+  const overlay = view.querySelector(".arcade__countdown");
+  if (overlay) overlay.remove();
+  ArcadeGame.placeWords(session.game, arcadeWords(session.target));
+  paintArcadeHud(session);
+  // The game already tells you which verb to look for: say it once, out loud.
+  Player.say([clipEntry(session.target, "base")], session.target.base);
 }
 
 /** Walking onto a sign: the right one scores and brings a new verb along. */
@@ -2091,7 +2218,7 @@ function collectArcadeWord(session, word) {
     return;
   }
   session.score += 1;
-  session.target = arcadeNextVerb(target);
+  session.target = arcadeNextVerb(session);
   ArcadeGame.placeWords(session.game, arcadeWords(session.target));
   recordAnswer(target, true);
   profile.stars += 1;
@@ -2099,6 +2226,20 @@ function collectArcadeWord(session, word) {
   paintArcadeHud(session);
   ArcadeGame.fxEat(word.r, word.c);
   Sfx.right();
+  // A right answer buys five seconds of prey: the ghosts run and can be eaten.
+  session.game.power = ArcadeGame.POWER_MS;
+  // The past form just collected, then the verb that replaces it: the second
+  // clip waits in the queue, so neither pronunciation cuts the other short.
+  Player.say(
+    [clipEntry(target, "past"), clipEntry(session.target, "base")],
+    `${sayForm(target, "past")}. ${session.target.base}`
+  );
+}
+
+/** Eating a ghost is a freebie: no points, but the maze is safer for a moment. */
+function eatArcadeMonster(monster) {
+  ArcadeGame.fxEaten(monster.r, monster.c);
+  Sfx.chomp();
 }
 
 function finishArcade(session) {
@@ -2193,6 +2334,9 @@ document.addEventListener("click", (event) => {
   const { action } = trigger.dataset;
 
   if (action === "home") { go("home"); return; }
+  if (action === "reset-progress") { state.confirmingReset = true; renderHome(); return; }
+  if (action === "reset-progress-cancel") { state.confirmingReset = false; renderHome(); return; }
+  if (action === "reset-progress-confirm") { resetProgress(); return; }
   if (action === "study") { go("study"); return; }
   if (action === "play") { go(trigger.dataset.mode); return; }
   if (action === "set-level") { setLevel(Number(trigger.dataset.level)); return; }
@@ -2303,10 +2447,7 @@ window.IVG = {
   get player() { return Player; },
   get arcade() { return state.arcade; },
   reset() {
-    profile = { ...EMPTY_PROFILE };
-    saveProfile();
-    state.study = { index: 0, filter: "" };
-    go("home");
+    resetProgress();
   }
 };
 

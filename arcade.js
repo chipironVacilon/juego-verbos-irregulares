@@ -34,14 +34,16 @@ window.ArcadeGame = (() => {
   const TILE = 28;
 
   /** Milliseconds the alien needs to cross one tile. */
-  const PLAYER_STEP_MS = 130;
+  const PLAYER_STEP_MS = 240;
   /** Milliseconds a monster needs to cross one tile: slower, so it can be dodged. */
-  const MONSTER_STEP_MS = 215;
+  const MONSTER_STEP_MS = 400;
   /** Share of monster steps that chase instead of wandering. */
   const CHASE_CHANCE = 0.85;
   /** Safety net so a long pause cannot replay dozens of steps at once. */
   const MAX_STEPS_PER_TICK = 4;
   const MAX_TICK_MS = 100;
+  /** How long a collected word turns the ghosts into prey. */
+  const POWER_MS = 5000;
 
   const PLAYER_START = { r: 6, c: 10 };
   const MONSTER_STARTS = [
@@ -137,6 +139,48 @@ window.ArcadeGame = (() => {
     return null;
   };
 
+  /**
+   * Corridor cells mapped to how many steps they are from `from`, by BFS. A
+   * fleeing ghost reads it as a hill: it always climbs away from the alien.
+   */
+  function distanceField(from) {
+    const field = new Map([[keyOf(from.r, from.c), 0]]);
+    const queue = [from];
+    while (queue.length > 0) {
+      const cell = queue.shift();
+      const steps = field.get(keyOf(cell.r, cell.c));
+      for (const name of DIRECTION_LIST) {
+        const [dr, dc] = DIRECTIONS[name];
+        const r = cell.r + dr;
+        const c = cell.c + dc;
+        const key = keyOf(r, c);
+        if (isWall(r, c) || field.has(key)) continue;
+        field.set(key, steps + 1);
+        queue.push({ r, c });
+      }
+    }
+    return field;
+  }
+
+  /**
+   * The neighbour furthest from the alien. A ghost can end up in a dead end, so
+   * this is only "away" when the maze allows it; ties and corridors are random.
+   */
+  function fleeStep(monster, field) {
+    const options = DIRECTION_LIST.filter((name) => canStep(monster.r, monster.c, name));
+    if (options.length === 0) return null;
+    const scored = options.map((name) => {
+      const [dr, dc] = DIRECTIONS[name];
+      const key = keyOf(monster.r + dr, monster.c + dc);
+      return { name, away: field.has(key) ? field.get(key) : -1 };
+    });
+    const best = Math.max(...scored.map((option) => option.away));
+    const pool = scored.filter((option) => option.away === best).map((option) => option.name);
+    const forward = pool.filter((name) => name !== oppositeOf(monster.dir));
+    const chosen = forward.length > 0 ? forward : pool;
+    return chosen[Math.floor(Math.random() * chosen.length)];
+  }
+
   const entity = (r, c) => ({ r, c, dir: null, desired: null, timer: 0, moved: false });
 
   const distance = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
@@ -197,9 +241,17 @@ window.ArcadeGame = (() => {
       cols: COLS,
       tile: TILE,
       player: { ...entity(PLAYER_START.r, PLAYER_START.c), desired: null },
-      monsters: MONSTER_STARTS.map((start, id) => ({ ...entity(start.r, start.c), id })),
+      // Every ghost remembers its corner, so an eaten one knows where to wait
+      // until the power runs out.
+      monsters: MONSTER_STARTS.map((start, id) => ({
+        ...entity(start.r, start.c),
+        id,
+        home: { ...start },
+        eaten: false
+      })),
       words: [],
       flash: null,
+      power: 0,
       over: false,
       moves: 0
     };
@@ -225,10 +277,11 @@ window.ArcadeGame = (() => {
     return player.moved;
   }
 
-  function stepMonster(game, monster) {
+  function stepMonster(game, monster, fleeField) {
     monster.moved = false;
     let direction = null;
-    if (Math.random() < CHASE_CHANCE) direction = stepTowards(monster, game.player);
+    if (fleeField) direction = fleeStep(monster, fleeField);
+    else if (Math.random() < CHASE_CHANCE) direction = stepTowards(monster, game.player);
     if (!direction) direction = wanderStep(monster);
     if (!direction) return false;
     monster.dir = direction;
@@ -241,6 +294,30 @@ window.ArcadeGame = (() => {
   }
 
   const touching = (a, b) => a.r === b.r && a.c === b.c;
+
+  /** A ghost eaten while the power lasts: out of the maze until it runs out. */
+  function eatMonster(monster) {
+    monster.eaten = true;
+    monster.moved = false;
+    monster.dir = null;
+    monster.desired = null;
+    monster.previous = null;
+    monster.timer = 0;
+  }
+
+  /** Power over: the eaten ghosts are back in their corners, hunting again. */
+  function wakeMonsters(game) {
+    for (const monster of game.monsters) {
+      if (!monster.eaten) continue;
+      monster.eaten = false;
+      monster.r = monster.home.r;
+      monster.c = monster.home.c;
+      monster.dir = null;
+      monster.desired = null;
+      monster.previous = null;
+      monster.timer = 0;
+    }
+  }
 
   /** Two actors swapped tiles during the same tick: they did meet. */
   const crossed = (monster, player, previousPlayer) =>
@@ -259,11 +336,16 @@ window.ArcadeGame = (() => {
    * `word` is the sign the alien just walked onto (only on entering its cell).
    */
   function tick(game, dtMs) {
-    const events = { caught: null, word: null };
+    const events = { caught: null, word: null, eaten: null };
     if (!game || game.over) return events;
 
     const dt = Math.min(MAX_TICK_MS, Math.max(0, Number(dtMs) || 0));
     const previousPlayer = { r: game.player.r, c: game.player.c };
+
+    if (game.power > 0) {
+      game.power = Math.max(0, game.power - dt);
+      if (game.power === 0) wakeMonsters(game);
+    }
 
     game.player.timer += dt;
     for (let step = 0; step < MAX_STEPS_PER_TICK && game.player.timer >= PLAYER_STEP_MS; step += 1) {
@@ -288,18 +370,26 @@ window.ArcadeGame = (() => {
       }
     }
 
+    const fleeing = game.power > 0 ? distanceField(game.player) : null;
     for (const monster of game.monsters) {
+      if (monster.eaten) continue;
       monster.timer += dt;
       for (let step = 0; step < MAX_STEPS_PER_TICK && monster.timer >= MONSTER_STEP_MS; step += 1) {
         monster.timer -= MONSTER_STEP_MS;
-        stepMonster(game, monster);
+        stepMonster(game, monster, fleeing);
       }
     }
 
     for (const monster of game.monsters) {
+      if (monster.eaten) continue;
       if (touching(monster, game.player) || crossed(monster, game.player, previousPlayer)) {
-        events.caught = monster;
-        game.over = true;
+        if (game.power > 0) {
+          eatMonster(monster);
+          events.eaten = monster;
+        } else {
+          events.caught = monster;
+          game.over = true;
+        }
         break;
       }
     }
@@ -336,6 +426,7 @@ window.ArcadeGame = (() => {
     alien: rgb(74 / 255, 222 / 255, 128 / 255),
     eye: rgb(11 / 255, 16 / 255, 32 / 255),
     monster: rgb(251 / 255, 113 / 255, 133 / 255),
+    frightened: rgb(72 / 255, 148 / 255, 1),
     good: rgb(1, 209 / 255, 102 / 255),
     bad: rgb(251 / 255, 113 / 255, 133 / 255),
     word: rgb(1, 209 / 255, 102 / 255, 0.26),
@@ -412,12 +503,15 @@ window.ArcadeGame = (() => {
     return shape(outline.map(([x, y]) => [x * radius, y * radius]));
   }
 
-  function drawMonster(px, py) {
+  function drawMonster(px, py, colour) {
     const radius = TILE * 0.32;
-    drawPoly(ghostShape(radius), paint.monster, 0, paint.monster, at(px, py));
+    drawPoly(ghostShape(radius), colour, 0, colour, at(px, py));
     drawCircle(at(px - radius * 0.34, py - radius * 0.35), radius * 0.4, paint.eye);
     drawCircle(at(px + radius * 0.34, py - radius * 0.35), radius * 0.4, paint.eye);
   }
+
+  /** Pink ghosts hunt; while the power lasts they turn blue and become prey. */
+  const monsterColour = (game) => (game && game.power > 0 ? paint.frightened : paint.monster);
 
   /** A wrong sign keeps blinking on the board until its timer runs out. */
   function drawFlash(game) {
@@ -445,9 +539,11 @@ window.ArcadeGame = (() => {
     for (const word of game.words) drawWord(word);
     drawFlash(game);
     drawRings();
+    const ghostColour = monsterColour(game);
     for (const monster of game.monsters) {
+      if (monster.eaten) continue;
       const spot = positionOf(monster, MONSTER_STEP_MS);
-      drawMonster(spot.x, spot.y);
+      drawMonster(spot.x, spot.y, ghostColour);
     }
     const spot = positionOf(game.player, PLAYER_STEP_MS);
     drawAlien(spot.x, spot.y);
@@ -559,6 +655,13 @@ window.ArcadeGame = (() => {
     cameraShake(0.9, vec2(1, 0.6));
   }
 
+  function fxEaten(r, c) {
+    if (!engineReady) return;
+    particleEffect("explosion", tileCentre(r, c), { scale: TILE * 0.8 });
+    ring(r, c, paint.frightened, 0.4);
+    cameraShake(0.25, vec2(0, 1));
+  }
+
   return {
     MAZE,
     ROWS,
@@ -568,6 +671,7 @@ window.ArcadeGame = (() => {
     MAZE_H,
     PLAYER_STEP_MS,
     MONSTER_STEP_MS,
+    POWER_MS,
     DIRECTIONS,
     create,
     setDirection,
@@ -576,10 +680,12 @@ window.ArcadeGame = (() => {
     isWall,
     corridors,
     stepTowards,
+    monsterColour,
     start,
     stop,
     fxEat,
     fxWrong,
-    fxCaught
+    fxCaught,
+    fxEaten
   };
 })();
