@@ -330,7 +330,8 @@
     background: #070b16;
   }
 
-  .arcade__canvas { display: block; width: 100%; height: auto; }
+  /* The engine sizes the canvas from canvasFixedSize, so the layout wins here. */
+  .arcade__canvas { display: block; width: 100% !important; height: auto !important; }
   .arcade__hint { margin: 0; text-align: center; color: var(--muted); font-size: 0.86rem; }
   .arcade__actions { display: flex; justify-content: center; }
 
@@ -837,6 +838,7 @@
 <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
 
 <script src="verbs.js"></script>
+<script src="vendor/littlejs.min.js"></script>
 <script src="arcade.js"></script>
 <script>
 "use strict";
@@ -848,12 +850,12 @@
 const esc = (value) =>
   String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const rand = (max) => Math.floor(Math.random() * max);
+const randomIndex = (max) => Math.floor(Math.random() * max);
 
 function shuffle(list) {
   const copy = list.slice();
   for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = rand(i + 1);
+    const j = randomIndex(i + 1);
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
@@ -1317,7 +1319,7 @@ function confetti() {
     size: 5 + Math.random() * 7,
     spin: (Math.random() - 0.5) * 0.35,
     angle: Math.random() * Math.PI,
-    color: colors[rand(colors.length)]
+    color: colors[randomIndex(colors.length)]
   }));
 
   let frame = 0;
@@ -1996,38 +1998,20 @@ function stopArcade() {
   const session = state.arcade;
   if (!session) return;
   session.stopped = true;
-  if (session.frame) cancelAnimationFrame(session.frame);
-  session.frame = 0;
+  ArcadeGame.stop();
   state.arcade = null;
 }
 
-/** Canvas in CSS pixels, backed by device pixels so it stays sharp. */
-function prepareArcadeCanvas(canvas, game) {
-  if (!canvas) return null;
-  const width = game.cols * game.tile;
-  const height = game.rows * game.tile;
-  const scale = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
-  canvas.style.aspectRatio = `${width} / ${height}`;
-  game.scale = scale;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  return ctx;
-}
-
-function arcadeSize(game) {
-  return { width: game.cols * game.tile, height: game.rows * game.tile };
-}
-
-function paintArcade(session) {
-  const { game } = session;
-  const canvas = view.querySelector(".arcade__canvas");
-  if (!canvas) return;
-  const ctx = session.ctx || prepareArcadeCanvas(canvas, game);
-  session.ctx = ctx;
-  ArcadeGame.draw(ctx, game, arcadeSize(game));
+/** Hand the stage to the engine: from here on it owns the canvas and the loop. */
+function startArcadeStage(session) {
+  const host = view.querySelector(".arcade__stage");
+  if (!host) return;
+  ArcadeGame.start(host, session.game, (step) => {
+    if (session.stopped || state.arcade !== session || state.view !== "arcade") return;
+    stepArcade(session, step);
+  }).catch((error) => {
+    console.error("el motor del arcade no arranca", error);
+  });
 }
 
 /** Only the live values are patched, so the loop never rebuilds the DOM. */
@@ -2047,7 +2031,6 @@ function renderArcade() {
     renderHome();
     return;
   }
-  session.ctx = null;
   view.innerHTML = `
     <div class="arcade">
       <div class="arcade__hud">
@@ -2057,17 +2040,14 @@ function renderArcade() {
         </div>
         <div class="arcade__score" title="Aciertos de esta partida">⭐ <b class="arcade__points">0</b></div>
       </div>
-      <div class="arcade__stage">
-        <canvas class="arcade__canvas" role="img" aria-label="Laberinto del arcade"></canvas>
-      </div>
+      <div class="arcade__stage"></div>
       <p class="arcade__hint">Muévete con las flechas del teclado y esquiva a los monstruos.</p>
       <div class="arcade__actions">
         <button class="btn btn--ghost" data-action="home">Salir al inicio</button>
       </div>
     </div>`;
   paintArcadeHud(session);
-  paintArcade(session);
-  startArcadeLoop(session);
+  startArcadeStage(session);
 }
 
 function renderArcadeOver() {
@@ -2093,30 +2073,12 @@ function renderArcadeOver() {
     </div>`;
 }
 
-function startArcadeLoop(session) {
-  if (session.frame) cancelAnimationFrame(session.frame);
-  session.stopped = false;
-  session.last = 0;
-  const frame = (now) => {
-    if (session.stopped || state.arcade !== session || state.view !== "arcade") return;
-    if (!session.last) session.last = now;
-    const elapsed = now - session.last;
-    session.last = now;
-    stepArcade(session, elapsed);
-    if (session.stopped || state.view !== "arcade") return;
-    session.frame = requestAnimationFrame(frame);
-  };
-  session.frame = requestAnimationFrame(frame);
-}
-
+/** One fixed engine frame: the simulation advances, the engine paints. */
 function stepArcade(session, elapsed) {
+  if (session.stopped) return;
   const events = ArcadeGame.tick(session.game, elapsed);
   if (events.word) collectArcadeWord(session, events.word);
-  if (events.caught) {
-    finishArcade(session);
-    return;
-  }
-  paintArcade(session);
+  if (events.caught) finishArcade(session);
 }
 
 /** Walking onto a sign: the right one scores and brings a new verb along. */
@@ -2124,6 +2086,7 @@ function collectArcadeWord(session, word) {
   const { target } = session;
   if (!word.correct) {
     recordAnswer(target, false);
+    ArcadeGame.fxWrong(word.r, word.c);
     Sfx.wrong();
     return;
   }
@@ -2134,18 +2097,23 @@ function collectArcadeWord(session, word) {
   profile.stars += 1;
   saveProfile();
   paintArcadeHud(session);
+  ArcadeGame.fxEat(word.r, word.c);
   Sfx.right();
 }
 
 function finishArcade(session) {
   session.stopped = true;
-  if (session.frame) cancelAnimationFrame(session.frame);
-  session.frame = 0;
-  paintArcade(session);
+  const { player } = session.game;
+  ArcadeGame.fxCaught(player.r, player.c);
   profile.arcadeBest = Math.max(profile.arcadeBest || 0, session.score);
   profile.rounds += 1;
   saveProfile();
-  renderArcadeOver();
+  // Let the explosion play before the score card replaces the maze.
+  window.setTimeout(() => {
+    if (state.arcade !== session) return;
+    ArcadeGame.stop();
+    renderArcadeOver();
+  }, 700);
 }
 
 /* =========================================================================

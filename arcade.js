@@ -306,55 +306,41 @@ window.ArcadeGame = (() => {
     return events;
   }
 
-  const theme = {
-    wall: "#8b7cff",
-    wallEdge: "rgba(139, 124, 255, 0.45)",
-    floor: "rgba(255, 255, 255, 0.03)",
-    alien: "#4ade80",
-    alienEye: "#0b1020",
-    monster: "#fb7185",
-    monsterEye: "#0b1020",
-    word: "rgba(255, 209, 102, 0.16)",
-    wordText: "#ffd166",
-    badWord: "rgba(251, 113, 133, 0.18)",
-    badWordText: "#fb7185"
+  /* =====================================================================
+     Presentation and effects, on LittleJS
+     =====================================================================
+     Everything above is the simulation: pure, clock-free and testable in
+     Node. From here down nothing is ever read back, so the engine can own
+     the canvas, the fixed 60Hz loop, the particles and the shake without
+     touching the rules.
+
+     The maze is still drawn procedurally on purpose: a page opened from disk
+     cannot load sprite files (the browser blocks them over file://), so the
+     engine's texture path is not available to this game.
+  */
+
+  const MAZE_W = COLS * TILE;
+  const MAZE_H = ROWS * TILE;
+
+  /** Maze pixels (y down) to LittleJS world units (y up, origin at the centre). */
+  const at = (x, y) => vec2(x - MAZE_W / 2, MAZE_H / 2 - y);
+  /** A maze-pixel size, as a world size. */
+  const span = (x, y) => vec2(x, y);
+  /** Offsets in maze pixels around a point, as the polygon LittleJS expects. */
+  const shape = (pairs) => pairs.map(([x, y]) => vec2(x, -y));
+
+  const paint = {
+    wall: rgb(139 / 255, 124 / 255, 1),
+    wallEdge: rgb(139 / 255, 124 / 255, 1, 0.45),
+    floor: rgb(1, 1, 1, 0.03),
+    alien: rgb(74 / 255, 222 / 255, 128 / 255),
+    eye: rgb(11 / 255, 16 / 255, 32 / 255),
+    monster: rgb(251 / 255, 113 / 255, 133 / 255),
+    good: rgb(1, 209 / 255, 102 / 255),
+    bad: rgb(251 / 255, 113 / 255, 133 / 255),
+    word: rgb(1, 209 / 255, 102 / 255, 0.26),
+    wordBad: rgb(251 / 255, 113 / 255, 133 / 255, 0.28)
   };
-
-  function roundedRect(ctx, x, y, width, height, radius) {
-    const r = Math.min(radius, width / 2, height / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + width, y, x + width, y + height, r);
-    ctx.arcTo(x + width, y + height, x, y + height, r);
-    ctx.arcTo(x, y + height, x, y, r);
-    ctx.arcTo(x, y, x + width, y, r);
-    ctx.closePath();
-  }
-
-  /** The static maze is painted once into an offscreen canvas. */
-  function paintMaze(game) {
-    const canvas = document.createElement("canvas");
-    const scale = game.scale || 1;
-    canvas.width = COLS * TILE * scale;
-    canvas.height = ROWS * TILE * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.scale(scale, scale);
-    ctx.fillStyle = theme.floor;
-    ctx.fillRect(0, 0, COLS * TILE, ROWS * TILE);
-    for (let r = 0; r < ROWS; r += 1) {
-      for (let c = 0; c < COLS; c += 1) {
-        if (!isWall(r, c)) continue;
-        ctx.fillStyle = theme.wall;
-        roundedRect(ctx, c * TILE + 1.5, r * TILE + 1.5, TILE - 3, TILE - 3, 6);
-        ctx.fill();
-        ctx.strokeStyle = theme.wallEdge;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
-    return canvas;
-  }
 
   /** Where an actor is drawn: the tile plus how far it is into the next one. */
   function positionOf(actor, stepMs) {
@@ -370,94 +356,207 @@ window.ArcadeGame = (() => {
     };
   }
 
-  function drawAlien(ctx, x, y) {
-    const radius = TILE * 0.34;
-    ctx.fillStyle = theme.alien;
-    ctx.beginPath();
-    ctx.ellipse(x, y, radius, radius * 1.08, 0, 0, Math.PI * 2);
-    ctx.fill();
+  const tileCentre = (r, c) => at((c + 0.5) * TILE, (r + 0.5) * TILE);
 
-    ctx.strokeStyle = theme.alien;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - radius * 0.5, y - radius * 0.85);
-    ctx.lineTo(x - radius * 0.78, y - radius * 1.5);
-    ctx.moveTo(x + radius * 0.5, y - radius * 0.85);
-    ctx.lineTo(x + radius * 0.78, y - radius * 1.5);
-    ctx.stroke();
-    ctx.fillStyle = theme.alien;
-    ctx.beginPath();
-    ctx.arc(x - radius * 0.78, y - radius * 1.5, 1.8, 0, Math.PI * 2);
-    ctx.arc(x + radius * 0.78, y - radius * 1.5, 1.8, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = theme.alienEye;
-    ctx.beginPath();
-    ctx.ellipse(x - radius * 0.36, y - radius * 0.1, radius * 0.18, radius * 0.26, 0, 0, Math.PI * 2);
-    ctx.ellipse(x + radius * 0.36, y - radius * 0.1, radius * 0.18, radius * 0.26, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(x, y + radius * 0.42, radius * 0.3, radius * 0.14, 0, 0, Math.PI * 2);
-    ctx.fill();
+  /** Walls are the only static part of the board, and they are cheap to redraw. */
+  function drawWalls() {
+    const half = (TILE - 3) / 2;
+    const square = shape([[-half, -half], [half, -half], [half, half], [-half, half]]);
+    for (let r = 0; r < ROWS; r += 1) {
+      for (let c = 0; c < COLS; c += 1) {
+        if (!isWall(r, c)) continue;
+        drawPoly(square, paint.wall, 1, paint.wallEdge, tileCentre(r, c));
+      }
+    }
   }
 
-  function drawMonster(ctx, x, y) {
-    const radius = TILE * 0.32;
-    ctx.fillStyle = theme.monster;
-    ctx.beginPath();
-    ctx.arc(x, y - radius * 0.15, radius, Math.PI, 0);
-    ctx.lineTo(x + radius, y + radius * 0.75);
-    ctx.lineTo(x + radius * 0.5, y + radius * 0.35);
-    ctx.lineTo(x, y + radius * 0.8);
-    ctx.lineTo(x - radius * 0.5, y + radius * 0.35);
-    ctx.lineTo(x - radius, y + radius * 0.75);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = theme.monsterEye;
-    ctx.beginPath();
-    ctx.arc(x - radius * 0.34, y - radius * 0.35, radius * 0.2, 0, Math.PI * 2);
-    ctx.arc(x + radius * 0.34, y - radius * 0.35, radius * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawWord(ctx, word) {
+  function drawWord(word) {
     const label = String(word.text || "");
     if (!label) return;
-    const x = (word.c + 0.5) * TILE;
-    const y = (word.r + 0.5) * TILE;
-    ctx.font = "600 11px system-ui, -apple-system, 'Segoe UI', sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const width = Math.max(TILE * 1.5, ctx.measureText(label).width + 12);
+    const centre = tileCentre(word.r, word.c);
     const height = TILE * 0.72;
-    ctx.fillStyle = word.correct ? theme.word : theme.badWord;
-    roundedRect(ctx, x - width / 2, y - height / 2, width, height, height / 2);
-    ctx.fill();
-    ctx.fillStyle = word.correct ? theme.wordText : theme.badWordText;
-    ctx.fillText(label, x, y + 0.5);
+    const width = Math.max(TILE * 1.5, label.length * TILE * 0.26 + 12);
+    const colour = word.correct ? paint.good : paint.bad;
+    drawRect(centre, span(width, height), word.correct ? paint.word : paint.wordBad);
+    // lineColor = the fill colour on purpose: a Canvas2D lineWidth of 0 is ignored
+    // and would otherwise stroke a black hairline over the glyphs, muddying them.
+    drawText(label, centre, TILE * 0.44, colour, 0, colour);
   }
 
-  function draw(ctx, game, size) {
-    if (!ctx) return;
-    if (!game.mazeLayer) game.mazeLayer = paintMaze(game);
-    ctx.clearRect(0, 0, size.width, size.height);
-    if (game.mazeLayer) ctx.drawImage(game.mazeLayer, 0, 0, size.width, size.height);
+  /** The alien bobs its antennae because the engine gives us a clock. */
+  function drawAlien(px, py) {
+    const radius = TILE * 0.34;
+    const bob = Math.sin(time * 7) * radius * 0.1;
+    drawEllipse(at(px, py), span(radius * 2, radius * 2.16), paint.alien);
 
-    for (const word of game.words) drawWord(ctx, word);
-    if (game.flash) {
-      ctx.fillStyle = theme.badWordText;
-      ctx.globalAlpha = Math.min(1, game.flash.ttl / 320) * 0.5;
-      roundedRect(ctx, game.flash.c * TILE + 3, game.flash.r * TILE + 3, TILE - 6, TILE - 6, 8);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+    const stalk = radius * 0.85;
+    const tipLeft = { x: px - radius * 0.78, y: py - radius * 1.5 + bob };
+    const tipRight = { x: px + radius * 0.78, y: py - radius * 1.5 + bob };
+    drawLine(at(px - radius * 0.5, py - stalk), at(tipLeft.x, tipLeft.y), 2, paint.alien);
+    drawLine(at(px + radius * 0.5, py - stalk), at(tipRight.x, tipRight.y), 2, paint.alien);
+    drawCircle(at(tipLeft.x, tipLeft.y), 3.6, paint.alien);
+    drawCircle(at(tipRight.x, tipRight.y), 3.6, paint.alien);
+
+    drawEllipse(at(px - radius * 0.36, py - radius * 0.1), span(radius * 0.36, radius * 0.52), paint.eye);
+    drawEllipse(at(px + radius * 0.36, py - radius * 0.1), span(radius * 0.36, radius * 0.52), paint.eye);
+    drawEllipse(at(px, py + radius * 0.42), span(radius * 0.6, radius * 0.28), paint.eye);
+  }
+
+  /** The wavy-bottomed ghost, as one polygon: cheaper than filling and stroking. */
+  function ghostShape(radius) {
+    const outline = [
+      [-1, 0.75], [-1, -0.15], [-0.9, -0.6], [-0.55, -0.95], [0, -1.05],
+      [0.55, -0.95], [0.9, -0.6], [1, -0.15], [1, 0.75],
+      [0.5, 0.35], [0, 0.8], [-0.5, 0.35]
+    ];
+    return shape(outline.map(([x, y]) => [x * radius, y * radius]));
+  }
+
+  function drawMonster(px, py) {
+    const radius = TILE * 0.32;
+    drawPoly(ghostShape(radius), paint.monster, 0, paint.monster, at(px, py));
+    drawCircle(at(px - radius * 0.34, py - radius * 0.35), radius * 0.4, paint.eye);
+    drawCircle(at(px + radius * 0.34, py - radius * 0.35), radius * 0.4, paint.eye);
+  }
+
+  /** A wrong sign keeps blinking on the board until its timer runs out. */
+  function drawFlash(game) {
+    if (!game.flash) return;
+    const alpha = Math.min(1, game.flash.ttl / 320) * 0.5;
+    const centre = tileCentre(game.flash.r, game.flash.c);
+    drawRect(centre, span(TILE - 6, TILE - 6), rgb(251 / 255, 113 / 255, 133 / 255, alpha));
+  }
+
+  /** Rings left by a pickup: their radius is driven by a LittleJS tween. */
+  let rings = [];
+
+  function drawRings() {
+    if (rings.length === 0) return;
+    rings = rings.filter((ring) => ring.until > time);
+    for (const ring of rings) {
+      const size = TILE * ring.scale;
+      drawEllipse(vec2(ring.x, ring.y), span(size, size), CLEAR_WHITE, 0, 2, ring.colour);
     }
+  }
+
+  function drawWorld(game) {
+    drawRect(vec2(0, 0), span(MAZE_W, MAZE_H), paint.floor);
+    drawWalls();
+    for (const word of game.words) drawWord(word);
+    drawFlash(game);
+    drawRings();
     for (const monster of game.monsters) {
       const spot = positionOf(monster, MONSTER_STEP_MS);
-      drawMonster(ctx, spot.x, spot.y);
+      drawMonster(spot.x, spot.y);
     }
     const spot = positionOf(game.player, PLAYER_STEP_MS);
-    drawAlien(ctx, spot.x, spot.y);
+    drawAlien(spot.x, spot.y);
+  }
+
+  /* ---------------------------------------------------------------------
+     Engine host: one canvas, one loop, entered and left with the screen
+     --------------------------------------------------------------------- */
+
+  let engineBoot = null;
+  let engineReady = false;
+  let canvas = null;
+  let live = null;
+
+  function engineUpdate() {
+    if (!live) return;
+    // The engine already runs at a fixed frameRate, so the step is exact and
+    // the simulation never sees a jittery frame delta again.
+    live.update(1000 / frameRate);
+  }
+
+  function engineRender() {
+    if (live) drawWorld(live.game);
+  }
+
+  function boot() {
+    if (engineBoot) return engineBoot;
+    engineBoot = (async () => {
+      showSplashScreen = false;
+      // Canvas2D only: the headless test runs Chromium with --disable-gpu and
+      // this game loads no textures, so WebGL would only add a failure mode.
+      setGLEnable(false);
+      canvasFixedSize = vec2(MAZE_W, MAZE_H);
+      canvasClearColor = CLEAR_BLACK;
+      cameraShakeDistance = 7;
+      cameraShakeDecay = 2.4;
+      await engineInit(() => {}, engineUpdate, () => {}, engineRender, () => {}, [], document.body);
+      canvas = mainCanvas;
+      if (canvas) {
+        // The stage starts empty: the engine's canvas is the only one on screen.
+        canvas.classList.add("arcade__canvas");
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute("aria-label", "Laberinto del arcade");
+      }
+      setCameraScale(1);
+      setCameraPos(vec2(0, 0));
+      setPaused(true);
+      engineReady = true;
+    })();
+    return engineBoot;
+  }
+
+  /**
+   * Attach the engine canvas to the stage of an arcade screen and let it run.
+   * `update` receives the fixed step in milliseconds on every engine frame.
+   */
+  async function start(host, game, update) {
+    live = { game, update };
+    rings = [];
+    await boot();
+    if (!engineReady) return false;
+    if (host && canvas && canvas.parentNode !== host) {
+      canvas.removeAttribute("style");
+      host.appendChild(canvas);
+    }
+    setCameraPos(vec2(0, 0));
+    setCameraScale(1);
+    setPaused(false);
+    return true;
+  }
+
+  /** The screen is gone: stop the loop instead of drawing into a detached canvas. */
+  function stop() {
+    live = null;
+    if (engineReady) setPaused(true);
+  }
+
+  /* ---------------------------------------------------------------------
+     Juice. Each of these is called by the caller that owns the rule, so the
+     simulation still decides what happened and the engine only shows it.
+     --------------------------------------------------------------------- */
+
+  function ring(r, c, colour, duration) {
+    const spot = tileCentre(r, c);
+    const item = { x: spot.x, y: spot.y, scale: 0.2, colour, until: time + duration };
+    tweenProperty(item, "scale", 0.2, 2, duration);
+    rings.push(item);
+  }
+
+  /* A built-in effect at scale 1 spans one world unit, and one world unit here
+     is one maze pixel, so every effect is scaled by the tile to be visible. */
+  function fxEat(r, c) {
+    if (!engineReady) return;
+    particleEffect("explosion", tileCentre(r, c), { scale: TILE * 0.7 });
+    ring(r, c, paint.good, 0.45);
+    cameraShake(0.18);
+  }
+
+  function fxWrong(r, c) {
+    if (!engineReady) return;
+    particleEffect("sparks", tileCentre(r, c), { scale: TILE * 0.45 });
+    ring(r, c, paint.bad, 0.35);
+    cameraShake(0.35, vec2(0, 1));
+  }
+
+  function fxCaught(r, c) {
+    if (!engineReady) return;
+    particleEffect("explosion", tileCentre(r, c), { scale: TILE * 1.4 });
+    cameraShake(0.9, vec2(1, 0.6));
   }
 
   return {
@@ -465,16 +564,22 @@ window.ArcadeGame = (() => {
     ROWS,
     COLS,
     TILE,
+    MAZE_W,
+    MAZE_H,
     PLAYER_STEP_MS,
     MONSTER_STEP_MS,
     DIRECTIONS,
     create,
     setDirection,
     tick,
-    draw,
     placeWords,
     isWall,
     corridors,
-    stepTowards
+    stepTowards,
+    start,
+    stop,
+    fxEat,
+    fxWrong,
+    fxCaught
   };
 })();
