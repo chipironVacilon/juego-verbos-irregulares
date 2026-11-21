@@ -756,6 +756,45 @@ await evaluate("location.hash = ''");
 await evaluate("document.querySelector('[data-action=home]').click()");
 await waitFor("!!document.querySelector('.mode')", "inicio antes del arcade");
 
+/* ------------------------------------------- estrellas en cada tarjeta ---- */
+
+// Every test card carries, on its right, the stars that test has earned.
+// Level 1 gave 10 to each test, and the level 2 rounds gave 8, 6 and 10.
+const cardStars = JSON.parse(
+  await evaluate(`(() => {
+    const count = (mode) => {
+      const badge = document.querySelector('.mode--' + mode + ' .mode__stars');
+      return badge ? Number(badge.querySelector('b').textContent) : null;
+    };
+    return JSON.stringify({
+      quiz: count('quiz'),
+      gaps: count('gaps'),
+      listen: count('listen'),
+      arcade: count('arcade'),
+      study: document.querySelectorAll('.mode--study .mode__stars').length,
+      labels: [...document.querySelectorAll('.mode__stars')].map((node) => node.getAttribute('aria-label'))
+    });
+  })()`)
+);
+check(
+  cardStars.quiz === 18 && cardStars.gaps === 16 && cardStars.listen === 20,
+  "cada prueba muestra a la derecha las estrellas que ha ganado",
+  JSON.stringify(cardStars)
+);
+check(cardStars.arcade === 0, "el arcade arranca con 0 estrellas en su tarjeta", `${cardStars.arcade}`);
+check(
+  cardStars.quiz + cardStars.gaps + cardStars.listen + cardStars.arcade === totals.stars,
+  "las estrellas de las pruebas suman el total de la barra",
+  JSON.stringify({ cardStars, total: totals.stars })
+);
+check(cardStars.study === 0, "las tarjetas de estudiar no muestran estrellas", `${cardStars.study}`);
+check(
+  cardStars.labels.every((label) => /^\d+ estrellas en esta prueba$/.test(label || '')),
+  "el contador se anuncia a quien usa lector de pantalla",
+  JSON.stringify(cardStars.labels)
+);
+await shot("05-estrellas-por-prueba");
+
 // Spy on the player so the round-opening pronunciation can be counted.
 await evaluate(`(() => {
   window.__arcadeSays = [];
@@ -970,6 +1009,17 @@ await shot("09-arcade-punto");
 await evaluate("document.querySelector('[data-action=home]').click()");
 await waitFor("!!document.querySelector('.mode')", "inicio antes del arcade del nivel 1");
 check((await evaluate("IVG.arcade")) === null, "salir del arcade termina la partida");
+const arcadeCardStars = JSON.parse(
+  await evaluate(`(() => JSON.stringify({
+    card: Number(document.querySelector('.mode--arcade .mode__stars b').textContent),
+    stored: IVG.profile.modeStars.arcade
+  }))()`)
+);
+check(
+  arcadeCardStars.card === arcadeCardStars.stored && arcadeCardStars.card > 0,
+  "el arcade suma en su tarjeta las estrellas que gana",
+  JSON.stringify(arcadeCardStars)
+);
 await evaluate(`document.querySelector('[data-action="set-level"][data-level="1"]').click()`);
 await waitFor("IVG.profile.level === 1", "nivel 1 antes del arcade");
 await evaluate("document.querySelector('[data-mode=arcade]').click()");
@@ -1559,6 +1609,8 @@ const migrated = JSON.parse(
     stars: IVG.profile.stars,
     rounds: IVG.profile.rounds,
     bestStreak: IVG.profile.bestStreak,
+    modeStars: IVG.profile.modeStars,
+    cardStars: [...document.querySelectorAll('.mode__stars b')].map((node) => node.textContent),
     pressed: document.querySelector('[data-level="2"]').getAttribute('aria-pressed'),
     headStars: document.getElementById('stat-stars').textContent
   }))()`)
@@ -1568,6 +1620,12 @@ check(
   migrated.stars === 7 && migrated.rounds === 2 && migrated.bestStreak === 3,
   "el perfil viejo conserva estrellas, racha y rondas",
   JSON.stringify(migrated)
+);
+check(
+  Object.values(migrated.modeStars).join() === "0,0,0,0" &&
+    migrated.cardStars.join() === "0,0,0,0",
+  "un perfil sin contadores por prueba arranca a cero, sin inventar estrellas",
+  JSON.stringify({ modeStars: migrated.modeStars, cardStars: migrated.cardStars })
 );
 check(
   migrated.pressed === "true" && migrated.headStars === "7",
@@ -1647,6 +1705,8 @@ const wiped = JSON.parse(
       streak: IVG.profile.bestStreak,
       rounds: IVG.profile.rounds,
       arcadeBest: IVG.profile.arcadeBest,
+      modeStars: IVG.profile.modeStars,
+      cardStars: [...document.querySelectorAll('.mode__stars b')].map((node) => node.textContent),
       verbs: Object.keys(IVG.profile.verbs || {}).length,
       level: IVG.profile.level,
       storedStars: typeof raw.stars === 'number' ? raw.stars : null,
@@ -1660,6 +1720,11 @@ const wiped = JSON.parse(
 check(wiped.stars === 0 && wiped.header === "0", "borrar el progreso deja las estrellas a cero", `${wiped.stars} / «${wiped.header}»`);
 check(wiped.streak === 0 && wiped.rounds === 0 && wiped.arcadeBest === 0, "la racha y los récords desaparecen", JSON.stringify(wiped));
 check(wiped.verbs === 0, "las estadísticas de los verbos se borran", `${wiped.verbs} verbos guardados`);
+check(
+  Object.values(wiped.modeStars).join() === "0,0,0,0" && wiped.cardStars.join() === "0,0,0,0",
+  "borrar el progreso deja a cero las estrellas de cada prueba",
+  JSON.stringify({ modeStars: wiped.modeStars, cardStars: wiped.cardStars })
+);
 check(wiped.storedStars === 0, "el borrado se guarda en el navegador", `${wiped.storedStars}`);
 check(wiped.level === 2 && wiped.pressed === "true", "el progreso borrado vuelve al nivel 2", `nivel ${wiped.level}`);
 

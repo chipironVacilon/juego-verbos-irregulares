@@ -46,6 +46,12 @@ que acabas de ver. En el inicio, el botón **Borrar progreso** pide confirmació
 deja el perfil como recién instalado (estrellas, racha, récords, estadísticas y
 nivel).
 
+En la pantalla de inicio, cada prueba (quiz, frases, escucha y arcade) lleva a la
+derecha un contador con las estrellas que ha ganado. Las tarjetas para estudiar no
+hacen preguntas, así que no dan estrellas ni llevan contador. Las estrellas de las
+cuatro pruebas suman el total de la barra superior; un perfil guardado antes de
+que existieran estos contadores arranca con ellos a cero y conserva su total.
+
 Atajos de teclado: `1`-`4` responden y `Enter` pasa a la siguiente pregunta. El
 arcade se juega con las flechas (`←` `↑` `→` `↓`), con las flechas táctiles de la
 pantalla o deslizando el dedo por el laberinto.
