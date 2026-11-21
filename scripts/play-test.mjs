@@ -1299,15 +1299,23 @@ const phoneLayout = () =>
       stage: stage ? { ...box(stage), touchAction: getComputedStyle(stage).touchAction } : null,
       canvas: canvas ? { ...box(canvas), ratio: canvas.getBoundingClientRect().width / canvas.getBoundingClientRect().height } : null,
       hint: (document.querySelector('.arcade__hint') || {}).textContent || '',
+      mazeRatio: ArcadeGame.MAZE_W / ArcadeGame.MAZE_H,
       toggle: !!toggle,
       pressed: toggle ? toggle.getAttribute('aria-pressed') : null,
       desired: IVG.arcade ? IVG.arcade.game.player.desired : null
     });
   })()`);
 
-// A real phone: narrow, tall and touch-only. The arcade has to own the screen
-// and read fingers instead of arrow keys.
-await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+/** The phone this section plays on, in CSS pixels: narrow, tall, touch only. */
+const PHONE_SCREEN = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true };
+
+/** Put the page on a phone screen and let the layout settle on the new box. */
+const useScreen = async (screen = PHONE_SCREEN) => {
+  await send("Emulation.setDeviceMetricsOverride", screen);
+  await sleep(500);
+};
+
+await send("Emulation.setDeviceMetricsOverride", PHONE_SCREEN);
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await send("Page.reload");
 await waitFor("!!window.IVG && !!document.querySelector('.mode')", "el juego arranca en un móvil");
@@ -1339,7 +1347,7 @@ check(
   JSON.stringify(phone.canvas)
 );
 check(
-  phone.canvas && Math.abs(phone.canvas.ratio - 21 / 13) < 0.02,
+  phone.canvas && Math.abs(phone.canvas.ratio - phone.mazeRatio) < 0.02,
   "el lienzo mantiene la proporción del laberinto",
   phone.canvas && phone.canvas.ratio.toFixed(3)
 );
@@ -1375,6 +1383,16 @@ check(
   `dirección ${afterTap.desired}`
 );
 
+// A browser without pointer events has no pointerdown listener: the keypad still
+// has to answer the click that a finger leaves behind.
+await evaluate("document.querySelector('[data-arcade-dir=left]')?.click()");
+const afterKeyClick = JSON.parse(await phoneLayout());
+check(
+  afterKeyClick.desired === "left",
+  "las flechas responden también al click de un navegador sin punteros",
+  `dirección ${afterKeyClick.desired}`
+);
+
 const stageMiddle = phone.stage
   ? { x: phone.stage.x + phone.stage.width / 2, y: phone.stage.y + phone.stage.height / 2 }
   : null;
@@ -1387,14 +1405,37 @@ check(
 );
 check(afterSwipe.scrollY === 0, "jugar con el dedo no desplaza la página", `${afterSwipe.scrollY} px`);
 
+// Two fingers on the maze: the one that started the drag owns it, and lifting
+// the other must not cancel the turn it was about to make.
+await evaluate(`(() => {
+  const stage = document.querySelector('.arcade__stage');
+  const rect = stage.getBoundingClientRect();
+  const x = rect.x + rect.width / 2;
+  const y = rect.y + rect.height / 2;
+  const fire = (type, id, cx, cy) => stage.dispatchEvent(new PointerEvent(type, {
+    pointerId: id, pointerType: 'touch', clientX: cx, clientY: cy, bubbles: true, cancelable: true
+  }));
+  IVG.arcade.game.player.desired = null;
+  fire('pointerdown', 7, x, y);
+  fire('pointerdown', 8, x + 60, y + 60);
+  fire('pointerup', 8, x + 60, y + 60);
+  fire('pointermove', 7, x, y - 130);
+  return true;
+})()`);
+const afterTwoFingers = JSON.parse(await phoneLayout());
+check(
+  afterTwoFingers.desired === "up",
+  "un segundo dedo no roba ni cancela el gesto del primero",
+  `dirección ${afterTwoFingers.desired}`
+);
+
 // A phone lying sideways: the keypad turns into one row so the maze keeps room.
-await send("Emulation.setDeviceMetricsOverride", { width: 844, height: 390, deviceScaleFactor: 2, mobile: true });
-await sleep(500);
+await useScreen({ ...PHONE_SCREEN, width: 844, height: 390 });
 const landscape = JSON.parse(await phoneLayout());
 check(
   landscape.canvas &&
     landscape.canvas.height >= 150 &&
-    Math.abs(landscape.canvas.ratio - 21 / 13) < 0.02 &&
+    Math.abs(landscape.canvas.ratio - landscape.mazeRatio) < 0.02 &&
     landscape.canvas.y >= 0 &&
     landscape.canvas.y + landscape.canvas.height <= landscape.viewport.height + 1,
   "en horizontal el laberinto sigue entrando entero",
@@ -1407,8 +1448,7 @@ check(
   `${landscape.keys.length} flechas en ${keyRows.size} fila(s)`
 );
 await shot("12-arcade-movil-horizontal");
-await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-await sleep(500);
+await useScreen();
 
 // The same button gives the page back, so a phone can leave the fullscreen game.
 await evaluate("document.querySelector('[data-action=arcade-fullscreen]')?.click()");

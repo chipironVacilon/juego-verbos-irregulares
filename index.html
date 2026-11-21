@@ -451,7 +451,7 @@
   body.arcade-fullscreen .arcade__hint { display: none; }
   body.arcade-fullscreen .arcade__actions { flex: 0 0 auto; }
 
-  /* The canvas is sized in JS to the biggest 21:13 box that fits here. */
+  /* The canvas is sized in JS to the biggest box with the maze's own shape. */
   body.arcade-fullscreen .arcade__stage {
     flex: 1 1 auto;
     min-height: 0;
@@ -2226,20 +2226,27 @@ function wantsTouchControls() {
  */
 function setArcadeFullscreen(on) {
   const active = Boolean(on);
+  const wasFullscreen = document.body.classList.contains("arcade-fullscreen");
   document.body.classList.toggle("arcade-fullscreen", active);
   const toggle = view.querySelector("[data-action=arcade-fullscreen]");
   if (toggle) toggle.setAttribute("aria-pressed", active ? "true" : "false");
   if (state.arcade) state.arcade.fullscreen = active;
+
   const root = document.documentElement;
   try {
-    if (active && !document.fullscreenElement && root.requestFullscreen) {
-      const asked = root.requestFullscreen({ navigationUI: "hide" });
-      if (asked && asked.catch) asked.catch(() => {});
-    } else if (!active && document.fullscreenElement && document.exitFullscreen) {
-      // Deferred: replaying the arcade asks for fullscreen again right away, and
-      // a browser refuses to re-enter while it is still leaving.
-      window.setTimeout(() => {
+    if (active) {
+      // Replaying the arcade re-enters in the same tick: cancel the pending exit.
+      window.clearTimeout(fullscreenExitTimer);
+      // Ask for the real thing unless this very document is already fullscreen.
+      if (root.requestFullscreen && document.fullscreenElement !== root) {
+        const asked = root.requestFullscreen({ navigationUI: "hide" });
+        if (asked && asked.catch) asked.catch(() => {});
+      }
+    } else if (wasFullscreen) {
+      // Deferred: a browser refuses to re-enter while it is still leaving.
+      fullscreenExitTimer = window.setTimeout(() => {
         if (document.body.classList.contains("arcade-fullscreen")) return;
+        if (!document.fullscreenElement || !document.exitFullscreen) return;
         const left = document.exitFullscreen();
         if (left && left.catch) left.catch(() => {});
       }, 0);
@@ -2249,6 +2256,9 @@ function setArcadeFullscreen(on) {
   }
   fitArcadeCanvas();
 }
+
+/** A fullscreen exit waiting for the end of the tick, or 0. */
+let fullscreenExitTimer = 0;
 
 /**
  * The maze keeps its own 21:13 shape, so in fullscreen the canvas takes the
@@ -2523,7 +2533,19 @@ function nextQuestion() {
 /* The brand button lives in the top bar, outside #view, so click delegation
    sits on the document. */
 document.addEventListener("click", (event) => {
-  const trigger = event.target instanceof Element ? event.target.closest("[data-action]") : null;
+  const target = event.target instanceof Element ? event.target : null;
+  const trigger = target ? target.closest("[data-action]") : null;
+
+  // A browser without pointer events leaves the keypad to its clicks. A browser
+  // with pointer events already steered on pointerdown and suppresses this
+  // click; if one slips through, steering twice to the same side is the same
+  // turn.
+  const arcadeKey = target && state.view === "arcade" ? target.closest("[data-arcade-dir]") : null;
+  if (arcadeKey) {
+    arcadeSteer(arcadeKey.dataset.arcadeDir);
+    return;
+  }
+
   if (!trigger) return;
   const { action } = trigger.dataset;
 
@@ -2654,7 +2676,7 @@ function swipeDirection(from, to) {
   return dy > 0 ? "down" : "up";
 }
 
-/** The drag in progress, or null: one finger, one direction. */
+/** The drag in progress (`id` is the finger that owns it), or null. */
 let arcadeSwipe = null;
 
 view.addEventListener("pointerdown", (event) => {
@@ -2672,11 +2694,13 @@ view.addEventListener("pointerdown", (event) => {
   const stage = event.target instanceof Element ? event.target.closest(".arcade__stage") : null;
   if (!stage) return;
   event.preventDefault();
-  arcadeSwipe = { x: event.clientX, y: event.clientY, steered: false };
+  // One finger owns the drag: a second one landing on the maze is not a turn.
+  if (arcadeSwipe) return;
+  arcadeSwipe = { id: event.pointerId, x: event.clientX, y: event.clientY, steered: false };
 });
 
 view.addEventListener("pointermove", (event) => {
-  if (!arcadeSwipe || arcadeSwipe.steered) return;
+  if (!arcadeSwipe || arcadeSwipe.steered || event.pointerId !== arcadeSwipe.id) return;
   const direction = swipeDirection(arcadeSwipe, { x: event.clientX, y: event.clientY });
   if (!direction) return;
   // Turn as soon as the finger commits, without waiting for it to lift.
@@ -2685,7 +2709,7 @@ view.addEventListener("pointermove", (event) => {
 });
 
 view.addEventListener("pointerup", (event) => {
-  if (!arcadeSwipe) return;
+  if (!arcadeSwipe || event.pointerId !== arcadeSwipe.id) return;
   const direction = arcadeSwipe.steered
     ? null
     : swipeDirection(arcadeSwipe, { x: event.clientX, y: event.clientY });
@@ -2693,7 +2717,9 @@ view.addEventListener("pointerup", (event) => {
   if (direction) arcadeSteer(direction);
 });
 
-view.addEventListener("pointercancel", () => { arcadeSwipe = null; });
+view.addEventListener("pointercancel", (event) => {
+  if (arcadeSwipe && event.pointerId === arcadeSwipe.id) arcadeSwipe = null;
+});
 
 /* Leaving the browser's fullscreen with Escape leaves the layout with it. */
 document.addEventListener("fullscreenchange", () => {
@@ -2706,8 +2732,13 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 /* A phone turned sideways gets a different box for the maze. */
-window.addEventListener("resize", () => fitArcadeCanvas());
-window.addEventListener("orientationchange", () => window.setTimeout(fitArcadeCanvas, 150));
+function refitArcade() {
+  if (state.view !== "arcade") return;
+  fitArcadeCanvas();
+}
+
+window.addEventListener("resize", refitArcade);
+window.addEventListener("orientationchange", () => window.setTimeout(refitArcade, 150));
 
 document.body.classList.toggle("is-touch", wantsTouchControls());
 
